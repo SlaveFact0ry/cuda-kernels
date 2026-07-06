@@ -1,0 +1,80 @@
+# gemm — single-precision GEMM optimization ladder
+
+Chapter of [`cuda-kernels`](../README.md). Step-by-step optimization of fp32 GEMM
+on an **RTX 3090 (Ampere GA102, `sm_86`)**, profiled at every stage against the
+cuBLAS speed-of-light baseline. The goal is not "a fast matmul" — it is a clean,
+measured account of *which* bottleneck dominates at each rung and *why*, up to a
+cp.async-fed, tensor-core kernel that mirrors what cuBLAS/CUTLASS do internally.
+
+> Methodology: **profile before optimizing.** Each version is verified against
+> cuBLAS, timed, and analyzed with Nsight Compute. The gap to the SoL roofline
+> is the optimization target; the limiter is identified before the next change.
+
+## Results (4096³, fp32)
+
+Filled in as each rung lands. `%SoL` = achieved GFLOP/s ÷ cuBLAS GFLOP/s.
+
+| version             | GFLOP/s | %SoL | dominant limiter (from NCU) |
+|---------------------|--------:|-----:|-----------------------------|
+| v0 cuBLAS (SoL)     |    —    | 100  | reference                   |
+| v1 naive            |    —    |  —   | _TODO: confirm memory-bound_ |
+| v2 smem tiling      |    —    |  —   | _TODO_                      |
+| v3 register tiling  |    —    |  —   | _TODO_                      |
+| v4 cp.async pipeline|    —    |  —   | _TODO: stalls hidden?_      |
+| v5 WMMA tensor core |    —    |  —   | _TODO (fp16/tf32)_          |
+
+Roofline plot: `results/roofline.png` (run `scripts/roofline.py`).
+Per-stage analysis: [`../docs/gemm-notes.md`](../docs/gemm-notes.md).
+
+## Build & run
+
+```bash
+# from this directory (gemm/)
+make                 # builds ./bench for sm_86 (override: make ARCH=sm_75)
+./bench              # default 2048^3
+./bench 4096 4096 4096 100
+make bench-sizes     # 1024 / 2048 / 4096
+make profile         # NCU on a small shape
+```
+
+Shared timing/verify utilities live in [`../common/common.cuh`](../common/common.cuh);
+the Makefile adds `-I../common`. Requires CUDA toolkit (nvcc + cuBLAS) and an
+Ampere-or-newer GPU for the v4/v5 features (v1–v3 build anywhere).
+
+## The optimization ladder
+
+1. **v1 naive** — one thread per C element, no reuse. Memory-bound baseline.
+2. **v2 shared-memory tiling** — stage A/B tiles in smem so each load is reused
+   block-wide; cut global traffic, watch bank conflicts and coalescing. Ampere
+   lets you opt into ~100 KB smem/block for bigger tiles.
+3. **v3 register/thread tiling** — each thread computes an 8×8 micro-tile in
+   registers; raises arithmetic intensity. Occupancy-vs-ILP trade-off lives here.
+4. **v4 cp.async software pipeline** — float4 async global→shared copies with a
+   multi-stage (2–4) buffer, hiding global latency behind compute. *This is the
+   rung Ampere unlocks — impossible on the previous Turing card.* Same structure
+   CUTLASS uses.
+5. **v5 WMMA tensor cores** — fp16 (16×16×16) / tf32 (16×16×8), fp32 accumulate;
+   lifts the compute roof to ~142 TFLOP/s, flipping the limiter back to feeding
+   the cores. Strongest variant = cp.async-fed WMMA.
+
+v1 is implemented as a working anchor; **v2–v5 are stubs with specs in the source
+comments** — implement one commit at a time so the history shows the progression.
+
+## Layout
+
+```
+include/   gemm.h (version registry)   [common.cuh is shared at ../common]
+src/       v0_cublas + v1..v5 kernels
+bench/     bench.cu — verify + time each version vs cuBLAS
+scripts/   roofline.py
+results/   generated plots (gitignored)
+```
+
+## Hardware / peak figures
+
+RTX 3090, `sm_86`: ~35.6 TFLOP/s fp32, ~142 TFLOP/s fp16 (tensor core), ~936
+GB/s. **Verify these for your card** and update `scripts/roofline.py`. The fp32
+ridge point (AI ≈ peak/BW ≈ 38 FLOP/byte) sits higher than on Turing, because
+Ampere's fp32 throughput grew more than its bandwidth — so square fp32 GEMM
+needs a larger N before it becomes compute-bound. That shift is itself part of
+the story.

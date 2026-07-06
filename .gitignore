@@ -1,0 +1,19 @@
+# build
+*.o
+*.so
+bench
+build/
+# profiling artifacts
+*.ncu-rep
+*.nsys-rep
+*.qdrep
+# python
+__pycache__/
+*.pyc
+.venv/
+# generated results (re-derivable)
+**/results/*.png
+**/results/*.csv
+# editor
+.vscode/
+.idea/
