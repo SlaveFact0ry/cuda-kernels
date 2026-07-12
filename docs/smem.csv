@@ -1,0 +1,2 @@
+﻿ID,Estimated Speedup [%],Function Name,Demangled Name,Duration [us],Runtime Improvement [us],Compute Throughput [%],Memory Throughput [%],# Registers [register/thread],Grid Size,Block Size [block],Result Type
+0,21.24,smem_sgemm,smem_sgemm..float..,966.72  (-19.84%),205.36,84.00  (-13.93%),84.00  (-13.93%),38   (-5.00%),"   32,   32,    1","   32,   32,    1",Kernel

@@ -16,9 +16,9 @@ Filled in as each rung lands. `%SoL` = achieved GFLOP/s ÷ cuBLAS GFLOP/s.
 
 | version             | GFLOP/s | %SoL | dominant limiter (from NCU) |
 |---------------------|--------:|-----:|-----------------------------|
-| v0 cuBLAS (SoL)     |    —    | 100  | reference                   |
-| v1 naive            |    —    |  —   | _TODO: confirm memory-bound_ |
-| v2 smem tiling      |    —    |  —   | _TODO_                      |
+| v0 cuBLAS (SoL)     | 22873.3 | 100  | reference                   |
+| v1 naive            |  2151.2 |  9.4 | L1TEX/LSU pipe saturation (NOT DRAM-bound — DRAM throughput only 1.6%; one uncoalesced global load per thread per iter) |
+| v2 smem tiling      |  2910.8 | 12.7 | MIO pipe saturation (shared-mem load per iter) + occupancy regression (66.7%, 1024-thread block) |
 | v3 register tiling  |    —    |  —   | _TODO_                      |
 | v4 cp.async pipeline|    —    |  —   | _TODO: stalls hidden?_      |
 | v5 WMMA tensor core |    —    |  —   | _TODO (fp16/tf32)_          |
@@ -34,7 +34,8 @@ make                 # builds ./bench for sm_86 (override: make ARCH=sm_75)
 ./bench              # default 2048^3
 ./bench 4096 4096 4096 100
 make bench-sizes     # 1024 / 2048 / 4096
-make profile         # NCU on a small shape
+make profile KERNEL=naive_sgemm   # NCU on one kernel by name (default: naive_sgemm)
+make profile KERNEL=smem_sgemm
 ```
 
 Shared timing/verify utilities live in [`../common/common.cuh`](../common/common.cuh);
@@ -65,7 +66,7 @@ comments** — implement one commit at a time so the history shows the progressi
 ```
 include/   gemm.h (version registry)   [common.cuh is shared at ../common]
 src/       v0_cublas + v1..v5 kernels
-bench/     bench.cu — verify + time each version vs cuBLAS
+driver/    bench.cu — verify + time each version vs cuBLAS
 scripts/   roofline.py
 results/   generated plots (gitignored)
 ```
