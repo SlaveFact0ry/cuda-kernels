@@ -50,6 +50,8 @@ int main(int argc, char** argv) {
   printf("%-18s %10.3f %10.1f %8s  %s\n", "v0_cublas(SoL)", ms_ref, sol, "100.0", "-");
 
   // ---- each version ---------------------------------------------------------
+  constexpr double kRelTol = 1e-3;  // fp32 vs cuBLAS, calibrated at 8192^3
+  int failures = 0;
   int n = 0; const Version* tbl = version_table(n);
   for (int i = 0; i < n; ++i) {
     CUDA_CHECK(cudaMemset(dC, 0, h_ref.size()*sizeof(float)));
@@ -57,14 +59,16 @@ int main(int argc, char** argv) {
     if (!ok) { printf("%-18s %10s %10s %8s  %s\n", tbl[i].name, "-", "-", "-", "skip"); continue; }
     CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaMemcpy(h_out.data(), dC, h_ref.size()*sizeof(float), cudaMemcpyDeviceToHost));
-    double diff = max_abs_diff(h_out, h_ref);
+    double diff = max_rel_diff(h_out, h_ref);
+    bool pass = diff < kRelTol;
+    if (!pass) ++failures;
     float ms = time_launcher(tbl[i].fn, M, N, K, alpha, beta, dA, dB, dC, warmup, iters);
     double g = gemm_gflops(M, N, K, ms);
     printf("%-18s %10.3f %10.1f %8.1f  maxdiff=%.2e %s\n", tbl[i].name, ms, g,
-           100.0 * g / sol, diff, diff < 1e-1 ? "PASS" : "FAIL");
+           100.0 * g / sol, diff, pass ? "PASS" : "FAIL");
   }
 
   cublasDestroy(handle);
   CUDA_CHECK(cudaFree(dA)); CUDA_CHECK(cudaFree(dB)); CUDA_CHECK(cudaFree(dC));
-  return 0;
+  return failures ? 1 : 0;
 }

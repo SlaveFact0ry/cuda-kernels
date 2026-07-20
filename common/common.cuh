@@ -47,12 +47,17 @@ inline void fill_random(std::vector<float>& v, unsigned seed = 1234) {
   for (auto& x : v) x = (float)rand() / (float)RAND_MAX * 2.f - 1.f;  // [-1, 1]
 }
 
-// max |a - b| over n elements; used to verify a kernel against the cuBLAS ref
-inline double max_abs_diff(const std::vector<float>& a,
-                           const std::vector<float>& b) {
+// max relative error of out vs ref, denominator floored at 1 to stay stable
+// near zero; used to verify a kernel against the cuBLAS reference. Relative
+// (not absolute) so the tolerance holds as K grows and per-element error
+// accumulates.
+inline double max_rel_diff(const std::vector<float>& out,
+                           const std::vector<float>& ref) {
   double m = 0.0;
-  for (size_t i = 0; i < a.size(); ++i)
-    m = fmax(m, (double)fabsf(a[i] - b[i]));
+  for (size_t i = 0; i < out.size(); ++i) {
+    double denom = fmax(1.0, (double)fabsf(ref[i]));
+    m = fmax(m, (double)fabsf(out[i] - ref[i]) / denom);
+  }
   return m;
 }
 
