@@ -36,7 +36,11 @@ make                 # builds ./bench for sm_86 (override: make ARCH=sm_75)
 make bench-sizes     # 1024 / 2048 / 4096
 make profile KERNEL=naive_sgemm   # NCU on one kernel by name (default: naive_sgemm)
 make profile KERNEL=smem_sgemm
+make sanitize        # compute-sanitizer memcheck on v1-v3 at 1024^3
 ```
+
+v1 handles arbitrary shapes. v2+ kernels require tile-multiple shapes; the
+launcher rejects other M/N/K explicitly (prints to stderr, row shows `skip`).
 
 Shared timing/verify utilities live in [`../common/common.cuh`](../common/common.cuh);
 the Makefile adds `-I../common`. Requires CUDA toolkit (nvcc + cuBLAS) and an

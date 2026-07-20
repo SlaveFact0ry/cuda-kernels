@@ -54,7 +54,7 @@ int main(int argc, char** argv) {
   for (int i = 0; i < n; ++i) {
     CUDA_CHECK(cudaMemset(dC, 0, h_ref.size()*sizeof(float)));
     bool ok = tbl[i].fn(M, N, K, alpha, beta, dA, dB, dC);
-    if (!ok) { printf("%-18s %10s %10s %8s  %s\n", tbl[i].name, "-", "-", "-", "stub"); continue; }
+    if (!ok) { printf("%-18s %10s %10s %8s  %s\n", tbl[i].name, "-", "-", "-", "skip"); continue; }
     CUDA_CHECK(cudaDeviceSynchronize());
     CUDA_CHECK(cudaMemcpy(h_out.data(), dC, h_ref.size()*sizeof(float), cudaMemcpyDeviceToHost));
     double diff = max_abs_diff(h_out, h_ref);

@@ -3,9 +3,11 @@
 // Each kernel version is a launcher with the SAME signature.
 // Row-major, single precision: C(MxN) = alpha * A(MxK) * B(KxN) + beta * C(MxN).
 //
-// Return true if the version is implemented and was launched, false if it is
-// still a stub (the benchmark harness then skips it gracefully). This lets the
-// repo always compile while you climb the ladder one commit at a time.
+// Return true if the version is implemented and was launched, false to skip
+// the row (still a stub, or the launcher rejected this M/N/K — e.g. v2+
+// require tile-multiple shapes). The benchmark harness skips gracefully
+// either way. This lets the repo always compile while you climb the ladder
+// one commit at a time.
 using GemmLauncher = bool (*)(int M, int N, int K, float alpha, float beta,
                               const float* dA, const float* dB, float* dC);
 

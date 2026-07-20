@@ -13,7 +13,7 @@ bench: $(SRC)
 	$(NVCC) $(NVFLAGS) $(SRC) -o bench $(LDLIBS)
 
 # default 2048^3 run
-.PHONY: run bench-sizes profile clean
+.PHONY: run bench-sizes profile sanitize clean
 run: bench
 	./bench
 
@@ -27,6 +27,9 @@ bench-sizes: bench
 KERNEL ?= naive_sgemm
 profile: bench
 	ncu --set full -k $(KERNEL) -c 1 ./bench 1024 1024 1024
+
+sanitize: bench
+	compute-sanitizer --tool memcheck --error-exitcode 1 ./bench 1024 1024 1024 3
 
 clean:
 	rm -f bench
