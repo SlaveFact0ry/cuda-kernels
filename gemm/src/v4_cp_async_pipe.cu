@@ -1,4 +1,4 @@
-// v4_pipelined.cu — YOUR RUNG. *This is the rung Ampere unlocks.*
+// v4_cp_async_pipe.cu — YOUR RUNG. *This is the rung Ampere unlocks.*
 //
 // On the old Turing card this step was a "manual" double buffer because
 // cp.async did not exist. On the 3090 (sm_80+) you have asynchronous
@@ -33,6 +33,6 @@
 // before/after stall breakdown the centerpiece of docs/notes.md.
 #include "gemm.h"
 
-bool launch_v4_vector(int, int, int, float, float, const float*, const float*, float*) {
+bool launch_v4_cp_async(int, int, int, float, float, const float*, const float*, float*) {
   return false;  // not implemented yet -> harness skips it
 }
