@@ -100,3 +100,17 @@ Template:
   register tiling(load 하나당 FMA를 늘리는 것)이 다음으로 맞는 방향이지,
   타일링을 더 하는 게 답이 아니다.
 - evidence: [NCU summary](smem.csv) · [NCU screenshot](smem_sgemm.png)
+- **bank-conflict discrepancy (unresolved, 2026-07-21)**: NCU's kernel-level
+  rule reproduces this entry's number exactly -- 1.3-way avg conflict across
+  24.32% of shared-store wavefronts (fresh `--set full` reprofile). But
+  per-instruction source correlation (`ncu --page source`) reports
+  `L1 Wavefronts Shared Excessive = 0` for every shared-memory instruction in
+  the kernel, and static SASS tracing of the store address
+  (`R6 = tx*4 + ty*128` → bank = tx, distinct per thread in a warp) predicts
+  zero conflict for both `As[ty][tx]` and `Bs[ty][tx]`. Two NCU views from the
+  same profiling run disagree, and the static analysis sides with "no
+  conflict" -- root cause not identified (candidates: an NCU source-attribution
+  limitation for STS, or a wavefront-accounting subtlety invisible in the
+  source CSV). `v2_smem_tiling.cu`'s "bank-conflict-free" comment scopes
+  itself to the inner-loop reads for this reason; don't extend that claim to
+  the tile-load stores without resolving this first.

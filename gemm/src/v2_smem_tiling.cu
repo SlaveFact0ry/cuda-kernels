@@ -2,8 +2,15 @@
 // __shared__ memory so each loaded element is reused by the whole block
 // instead of re-fetched per thread. Inner-loop reads are bank-conflict-free:
 // As[ty][k] is a broadcast (same address for every tx in the warp), Bs[k][tx]
-// hits consecutive banks across tx. NCU checklist + Ampere smem notes:
-// ../docs/gemm-notes.md.
+// hits consecutive banks across tx.
+//
+// The tile-load STORES (As[ty][tx] = ..., Bs[ty][tx] = ...) are deliberately
+// NOT claimed conflict-free above -- static address tracing (offset =
+// tx*4 + ty*128 -> bank = tx, distinct per thread in a warp) says they
+// should be, but NCU measures ~24%/1.3-way conflict on shared stores at
+// runtime. The two disagree; root cause unresolved as of 2026-07-21. See
+// gemm-notes.md's v2 entry before trusting either claim.
+// NCU checklist + Ampere smem notes: ../docs/gemm-notes.md.
 
 #include "common.cuh"
 #include "gemm.h"
