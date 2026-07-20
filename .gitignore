@@ -17,3 +17,5 @@ __pycache__/
 # editor
 .vscode/
 .idea/
+*/uv.lock
+*/.python-version
