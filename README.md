@@ -31,9 +31,16 @@ reasoning, not just the endpoint.
 ## Environment
 
 CUDA toolkit (nvcc + cuBLAS), **Nsight Compute 2024.1.1**, **Nsight Systems
-2023.4.4**, RTX 3090 (`sm_86`). Architecture is a build flag, not baked into any
-name: `make ARCH=sm_xx`. The analysis is written for Ampere, where the full
-toolbox (async copy + tensor cores) is available.
+2023.4.4**, RTX 3090 (`sm_86`), driver 550.163.01. Architecture is a build
+flag, not baked into any name: `make ARCH=sm_xx`. The analysis is written for
+Ampere, where the full toolbox (async copy + tensor cores) is available.
+
+The 3090 doubles as the display GPU, so boost clocks drift with thermal/desktop
+load. `%SoL` figures are relatively stable (same-session ratio to the cuBLAS
+run), but absolute GFLOP/s numbers are **not** clock-locked -- treat them as
+indicative, not reproducible bit-for-bit. Lock clocks
+(`sudo nvidia-smi -lgc <base_clock>`) before measurements that need to compare
+precisely across sessions.
 
 ## Layout
 
