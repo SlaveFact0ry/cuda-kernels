@@ -60,8 +60,14 @@ __global__ void register_tile(int M, int N, int K, float alpha, float beta,
 
 bool launch_v3_regtile(int M, int N, int K, float alpha, float beta,
                     const float* dA, const float* dB, float* dC) {
+  if (M % BM || N % BN || K % BK) {
+    fprintf(stderr,
+            "v3_register_tile: requires M,N,K multiples of %d/%d/%d (got %d,%d,%d)\n",
+            BM, BN, BK, M, N, K);
+    return false;                    // harness skips the row
+  }
   dim3 block(( BM / TM ) , ( BN / TN )) ;
-  dim3 grid(( N + BN - 1) / BN, ( M + BM - 1) / BM ) ;
+  dim3 grid(N / BN, M / BM);         // exact division now — no false ceil-div promise
   register_tile<<<grid, block>>>(M, N, K, alpha, beta, dA, dB, dC);
   CUDA_CHECK(cudaGetLastError());
   return true;
