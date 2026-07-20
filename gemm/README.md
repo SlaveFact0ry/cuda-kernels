@@ -23,7 +23,9 @@ Filled in as each rung lands. `%SoL` = achieved GFLOP/s ÷ cuBLAS GFLOP/s.
 | v4 cp.async pipeline|    —    |  —   | _TODO: stalls hidden?_      |
 | v5 WMMA tensor core |    —    |  —   | _TODO (fp16/tf32)_          |
 
-Roofline plot: `results/roofline.png` (run `scripts/roofline.py`).
+Roofline plot: [`../docs/roofline.png`](../docs/roofline.png) (regenerate with
+`scripts/roofline.py`; x-axis is algorithmic AI = N/6, assuming full reuse —
+not NCU-measured DRAM traffic).
 Per-stage analysis: [`../docs/gemm-notes.md`](../docs/gemm-notes.md).
 
 ## Build & run

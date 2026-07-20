@@ -22,8 +22,12 @@ PEAK_BW_GBs      = 936.0     # ~936 GB/s (GDDR6X, 384-bit) — verify
 
 # (label, arithmetic_intensity_flop_per_byte, achieved_GFLOPs)
 points = [
-    # ("v1_naive 2048",  2048/6,  XXX),
-    # ("v2_smem 2048",   2048/6,  XXX),
+    ("v0_cublas 2048", 2048/6, 22247.4),
+    ("v0_cublas 4096", 4096/6, 22873.3),
+    ("v1_naive 2048",  2048/6,  2213.1),
+    ("v1_naive 4096",  4096/6,  2151.2),
+    ("v2_smem 2048",   2048/6,  2985.1),
+    ("v2_smem 4096",   4096/6,  2910.8),
 ]
 
 ai = np.logspace(-1, 4, 400)
