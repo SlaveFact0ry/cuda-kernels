@@ -58,6 +58,7 @@ Template:
     루프보다 먼저 돌기 때문에 실제로는 cuBLAS 자체의 워밍업 커널
     (`ampere_sgemm_128x64_nn`)이 잡혔다. `gemm/Makefile`에
     `KERNEL ?= naive_sgemm` 변수를 추가해 수정함.
+- evidence: [NCU details](ncu_naive_sgemm_details.csv)
 
 ---
 
@@ -99,7 +100,7 @@ Template:
   명령어 레벨 문제다 — FMA 하나당 scalar memory op가 너무 많다. v3의
   register tiling(load 하나당 FMA를 늘리는 것)이 다음으로 맞는 방향이지,
   타일링을 더 하는 게 답이 아니다.
-- evidence: [NCU summary](smem.csv) · [NCU screenshot](smem_sgemm.png)
+- evidence: [NCU details](ncu_smem_sgemm_details.csv) · [NCU summary](smem.csv) · [NCU screenshot](smem_sgemm.png)
 - **bank-conflict discrepancy (unresolved, 2026-07-21)**: NCU's kernel-level
   rule reproduces this entry's number exactly -- 1.3-way avg conflict across
   24.32% of shared-store wavefronts (fresh `--set full` reprofile). But
