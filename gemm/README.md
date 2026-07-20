@@ -19,7 +19,7 @@ Filled in as each rung lands. `%SoL` = achieved GFLOP/s ÷ cuBLAS GFLOP/s.
 | v0 cuBLAS (SoL)     | 22873.3 | 100  | reference                   |
 | v1 naive            |  2151.2 |  9.4 | L1TEX/LSU pipe saturation (NOT DRAM-bound — DRAM throughput only 1.6%; one uncoalesced global load per thread per iter) |
 | v2 smem tiling      |  2910.8 | 12.7 | MIO pipe saturation (shared-mem load per iter) + occupancy regression (66.7%, 1024-thread block) |
-| v3 register tiling  |    —    |  —   | _TODO_                      |
+| v3 register tiling  |  9431.4 | 41.0 | Register-limited occupancy (96 reg/thread → 33.3% theoretical, 2 blocks/SM) starves latency-hiding — short+long-scoreboard stalls dominate; NOT compute-bound (FMA pipe ~10%), + 50% shared-load bank conflicts (3.2-way) |
 | v4 cp.async pipeline|    —    |  —   | _TODO: stalls hidden?_      |
 | v5 WMMA tensor core |    —    |  —   | _TODO (fp16/tf32)_          |
 
@@ -64,7 +64,7 @@ Ampere-or-newer GPU for the v4/v5 features (v1–v3 build anywhere).
    lifts the compute roof to ~142 TFLOP/s, flipping the limiter back to feeding
    the cores. Strongest variant = cp.async-fed WMMA.
 
-v1–v2 are implemented; **v3–v5 are stubs with specs in the source
+v1–v3 are implemented; **v4–v5 are stubs with specs in the source
 comments** — implement one commit at a time so the history shows the progression.
 
 ## Layout

@@ -15,7 +15,7 @@ closing the gap rung by rung.
 
 | chapter | scope | status |
 |---------|-------|--------|
-| [gemm/](gemm/) | naive → smem → register tile → cp.async pipeline → WMMA | v1–v2 landed; v3–v5 stubs |
+| [gemm/](gemm/) | naive → smem → register tile → cp.async pipeline → WMMA | v1–v3 landed; v4–v5 stubs |
 | [flash-attn/](flash-attn/) | FlashAttention-2 kernel + profile, sm_86 | planned (Aug 2026) |
 | [kv-cache/](kv-cache/) | KV cache + speculative-decoding profiling | planned (Sep–Oct 2026) |
 

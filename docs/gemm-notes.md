@@ -115,3 +115,65 @@ Template:
   source CSV). `v2_smem_tiling.cu`'s "bank-conflict-free" comment scopes
   itself to the inner-loop reads for this reason; don't extend that claim to
   the tile-load stores without resolving this first.
+
+---
+
+## v3_register_tile (2026-07-20)
+- change: register/thread tiling — 스레드 하나가 C의 8×8(`TM=TN=8`) 마이크로
+  타일 전체를 레지스터에 들고 계산한다(`BM=BN=128, BK=8`, 블록 = 16×16 =
+  256 스레드). shared memory에서 읽은 값 하나를 v2처럼 FMA 1개에 쓰고
+  버리는 게 아니라 `TM*TN=64`번의 FMA에 재사용해서, shared-memory read
+  대비 연산 비율을 끌어올리는 게 목적이다.
+- result:
+  - 2048³: 1.954 ms, 8791.7 GFLOP/s, 40.7% SoL (cuBLAS 21579.8 GFLOP/s)
+  - 4096³: 14.572 ms, 9431.4 GFLOP/s, 41.0% SoL (cuBLAS 23018.6 GFLOP/s)
+- bottleneck before: v2는 scalar shared-memory load(`As[ty][k]`,
+  `Bs[k][tx]`)가 iteration마다 하나씩 나가는 구조 때문에 MIO 파이프가
+  포화(Mem Pipes Busy 84%)였고, 여기에 1024-thread 블록이 강제하는
+  66.7% occupancy까지 겹쳐 있었다.
+- bottleneck after (NCU 실측 확인, 1024³, `make profile KERNEL=register_tile`):
+  병목의 성격이 v2의 MIO 파이프 throughput 포화(Mem Pipes Busy 84%)에서
+  완전히 바뀌었다. v3는 register tiling으로 "operand 로드 1개당 FMA"
+  비율을 8 shared-load → 64 FMA로 끌어올려서, Mem Pipes Busy가 20.0%로
+  떨어졌다. 파이프 처리량 포화는 해소된 것이다. 그런데 compute-bound로
+  넘어가지도 않았다: Compute(SM) Throughput 20.0%, FMA 파이프(fma-heavy
+  10.3% / fma-lite 9.7%)로 연산 파이프는 여전히 한산하다. 실제 새 한계는
+  register pressure가 만든 낮은 occupancy 때문에 memory latency를 숨길
+  warp가 부족한 것이다. `acc[8][8]`(64개) + `regM[8]`+`regN[8]` 때문에
+  스레드당 96 레지스터를 써서 Block Limit(Registers)=2로 theoretical
+  occupancy가 33.3%(register-limited, scheduler당 4 warp, HW 최대 12의
+  1/3)에 묶인다. 그 결과 scheduler당 active warp가 2.0개뿐이라 74.5%의
+  사이클에 eligible warp가 하나도 없고(약 3.9 사이클마다 1회만 issue),
+  warp가 issue 사이 7.84 사이클 중 short scoreboard(MIO/shared-mem 의존)
+  2.68 사이클(34.2%) + long scoreboard(global-load 의존) 2.30 사이클
+  (29.3%)로 memory latency 노출에 그대로 앉아 있다. 여기에
+  `As[ty*TM+i][k]` 컬럼 접근이 shared load의 50.0% wavefront에서 평균
+  3.2-way bank conflict(8.4M conflicts)를 일으켜 short-scoreboard latency를
+  키운다(v2의 24% shared-store conflict보다 악화).
+- why it worked (or didn't): 방향으로는 맞았다. v2 대비 GFLOP/s가 거의
+  세 배로 뛰었다(2910.8 → 9431.4, +224%, 4096³ 기준). shared-memory
+  transaction 하나당 arithmetic intensity를 끌어올려서 MIO 파이프를
+  풀어준 게 그대로 처리량으로 이어졌다. 하지만 compute-bound까지는
+  못 갔다: `TM=TN=8`이 요구하는 96 reg/thread 레지스터 풋프린트가
+  occupancy를 낮게 눌러놔서, SM이 (빈도는 줄었지만 여전히 존재하는)
+  memory latency를 숨길 만큼의 warp를 확보하지 못한다. P&H 4장/5장
+  프레임으로 보면 v1·v2가 "명령어 처리량(파이프)" 문제였다면, v3는 같은
+  ILP-vs-occupancy 트레이드오프가 레지스터 축으로 옮겨간 것이다. ILP를
+  올리려고 쓴 레지스터가 occupancy를 깎아서 latency-hiding 여력을
+  갉아먹는다.
+- surprises: (1) NCU 프로파일은 1024³에서 떴는데(64 블록 = 8×8 grid vs
+  82 SM → 0.39 wave, device underfill), 그래서 이 프로파일의 절대 SoL류
+  퍼센트(Mem Throughput 30.3%, Compute 20.0%, DRAM 3.05%, L2 6.6%)는
+  tail-effect로 눌려 있어 실제 4096³ 실행(41.1% SoL)을 그대로 대표하지
+  않는다. 반면 per-warp 분석(register-capped occupancy, scoreboard stall
+  breakdown, bank conflict)은 shape에 무관하므로 그대로 유효하다.
+  Occupancy: Theoretical 33.33%(제한 자원 = 레지스터, 96 reg/thread,
+  2 blocks/SM), Achieved 16.65%(7.99 warps/SM). achieved가 theoretical의
+  절반인 건 0.39-wave underfill 때문이고, 4096³에서는 33%에 더 가깝게
+  수렴할 것으로 예상된다. (2) bank conflict가 v2보다 오히려 악화됐다.
+  v2는 shared-store wavefront의 24.0%에서 평균 1.3-way였는데, v3는
+  shared-load wavefront의 50.0%에서 평균 3.2-way다. register blocking이
+  도입한 `As[ty*TM+i][k]` 컬럼 접근 패턴 자체가 새로운 conflict 원인이라는
+  뜻으로, v4/이후 작업에는 독립적인 레버가 두 개 남아 있다: occupancy를
+  올리는 것(더 작은 TM/TN 또는 더 짧게 사는 레지스터)과, bank-conflict
+  접근 패턴 자체를 고치는 것.
