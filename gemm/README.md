@@ -62,7 +62,7 @@ Ampere-or-newer GPU for the v4/v5 features (v1–v3 build anywhere).
    lifts the compute roof to ~142 TFLOP/s, flipping the limiter back to feeding
    the cores. Strongest variant = cp.async-fed WMMA.
 
-v1 is implemented as a working anchor; **v2–v5 are stubs with specs in the source
+v1–v2 are implemented; **v3–v5 are stubs with specs in the source
 comments** — implement one commit at a time so the history shows the progression.
 
 ## Layout

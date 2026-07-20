@@ -99,3 +99,4 @@ Template:
   명령어 레벨 문제다 — FMA 하나당 scalar memory op가 너무 많다. v3의
   register tiling(load 하나당 FMA를 늘리는 것)이 다음으로 맞는 방향이지,
   타일링을 더 하는 게 답이 아니다.
+- evidence: [NCU summary](smem.csv) · [NCU screenshot](smem_sgemm.png)
