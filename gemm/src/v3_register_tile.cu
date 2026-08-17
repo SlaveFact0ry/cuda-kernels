@@ -17,11 +17,7 @@ __global__ void register_tile(int M, int N, int K, float alpha, float beta,
                               const float* __restrict__ B,
                               float* __restrict__ C){
 
-  int blockRow = blockIdx.y;
-  int blockCol = blockIdx.x;
-  int ty = threadIdx.y;
-  int tx = threadIdx.x;
-  int tid = blockDim.x * ty + tx;
+  int tid = blockDim.x * threadIdx.y + threadIdx.x;
   int strideA = (blockDim.x * blockDim.y)/BK;
   int strideB = (blockDim.x * blockDim.y)/BN;
   int innerRowA = tid / BK; int innerColA = tid % BK;
@@ -32,28 +28,27 @@ __global__ void register_tile(int M, int N, int K, float alpha, float beta,
   float acc[TM][TN] = {0.f};
   float regM[TM], regN[TN];
 
-  A += blockRow * BM * K;
-  B += blockCol * BN;
-  C += blockRow * BM * N + blockCol * BN;
+  A += blockIdx.y * BM * K;
+  B += blockIdx.x * BN;
+  C += blockIdx.y * BM * N + blockIdx.x * BN;
 
   for (int t = 0; t < K; t += BK) {
     for(int off = 0; off < BM; off += strideA) As[innerRowA + off][innerColA] = A[ (innerRowA + off)* K + innerColA];
     for(int off = 0; off < BK; off += strideB) Bs[innerRowB +off][innerColB] = B[ (innerRowB + off) * N + innerColB ];
     __syncthreads();
     for (int k = 0; k < BK; ++k) {
-      for (int i = 0; i < TM; ++i) regM[i] = As[ty*TM + i][k];
-      for (int j = 0; j < TN; ++j) regN[j] = Bs[k][tx*TN + j];
+      for (int i = 0; i < TM; ++i) regM[i] = As[threadIdx.y*TM + i][k];
+      for (int j = 0; j < TN; ++j) regN[j] = Bs[k][threadIdx.x*TN + j];
       for (int i = 0; i < TM; ++i)
         for (int j = 0; j < TN; ++j) acc[i][j] += regM[i] * regN[j];
     }
     __syncthreads();
     A += BK;
     B += BK * N;
-
   }
   for (int i = 0; i < TM; ++i)
     for (int j = 0; j < TN; ++j) {
-      int r = ty*TM + i, c = tx*TN + j;
+      int r = threadIdx.y*TM + i, c = threadIdx.x*TN + j;
       C[r*N + c] = alpha*acc[i][j] + beta*C[r*N + c];
     }
 }
