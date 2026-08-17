@@ -255,3 +255,68 @@ Template:
   고치는 레버와 (b) occupancy를 올리는 레버가 여전히 독립적으로 남아
   있다.
 - evidence: [NCU details](ncu_register_tile_vec_details.csv)
+
+## v3b_vectorize — global→shared 벡터화 (2026-08-18)
+- change: 기존 v3b(shared-memory read만 벡터화)에 이어, global→shared 쓰기
+  (A/B 타일 스테이징)도 float4로 벡터화했다. A는 `float4`로 4개 원소를
+  한 번에 읽어 전치 레이아웃 `As[BK][BM]`에 4번의 scalar 쓰기로
+  흩뿌리고(전치 때문에 쓰기 자체는 벡터화 불가), B는 읽기·쓰기 모두
+  `reinterpret_cast<float4*>`로 한 번에 처리한다. 이전 버전의
+  `strideA`/`strideB` 기반 strided 루프(스레드당 여러 번 반복)를 없애고
+  스레드당 float4 로드 1회로 타일 전체를 커버하도록 `innerRowA/B`,
+  `innerColA/B` 계산을 재구성했다(`BM=BN=128, BK=8, TM=TN=8`은 변경 없음).
+- result (4096³, locked clock 기준, v0~v3b와 동일 세션/조건):
+  - 8.701 ms, 15795.3 GFLOP/s, 76.9% SoL (v0 cuBLAS 20535.1 GFLOP/s)
+  - 이전 v3b(11473.1 GFLOP/s, 55.8% SoL) 대비 +37.7% GFLOP/s.
+- bottleneck before: 이전 v3b는 shared-memory read만 벡터화해서
+  occupancy(33.3%, 96 reg/thread)는 그대로 두고 명령어 개수만 줄여
+  Compute(SM) 56.2%까지 올렸지만, global load는 여전히 strided scalar
+  루프였고 shared-store bank conflict가 4.5-way(wavefront의 77.78%)로
+  새로 나타난 상태였다(read 벡터화가 전치 레이아웃의 write 패턴을
+  건드리지 않았기 때문).
+- bottleneck after (NCU 실측, 4096³, `register_tile_vec` 커널,
+  `ncu --import v3b2.ncu-rep`): 레지스터가 96→113 reg/thread로 늘었지만
+  Block Limit Registers는 여전히 2, Theoretical Occupancy 33.33%(achieved
+  32.33%)로 occupancy 상한 자체는 바뀌지 않았다(113 reg가 아직 128
+  reg/thread 문턱을 넘지 않아 2 blocks/SM 유지). Compute(SM) Throughput은
+  60.03%로 더 올랐고, FMA가 가장 바쁜 파이프(56.5%)로 확인된다. Scheduler
+  One or More Eligible 62.75%(이전 59.36%), Warp Cycles Per Issued
+  Instruction 6.18(이전 6.55, 즉 발행 간격이 더 짧아짐).
+
+  Bank conflict는 read/write가 갈렸다: shared-load는 5.0-way/40.00%로
+  이전과 완전히 동일하다(regM/regN을 채우는 `As[k][...]`/`Bs[k][...]`
+  읽기 패턴 자체는 이번 변경에서 손대지 않았으므로 예상된 결과). 반면
+  shared-store는 4.5-way(wavefront의 77.78%) → 2.4-way(wavefront의
+  33.33%)로 뚜렷이 개선됐다 — B를 float4로 한 번에 쓰면서 store 요청
+  수 자체도 33,554,432 → 20,971,520으로 줄었다.
+
+  Global load 패턴은 28.9/32바이트로 이전과 동일하다(coalescing 개선
+  여지 약 8%, 벡터화가 access pattern 자체를 바꾸진 않음 — sector
+  활용률은 그대로). Global store는 4.0/32바이트(개선 여지 약 72%)로
+  C store는 여전히 손대지 않은 기존 문제. DRAM Throughput은 13.54%
+  (이전 8.78%)로 올랐지만 여전히 DRAM-bound는 아니다.
+- why it worked (or didn't): occupancy는 그대로고 shared-load conflict도
+  그대로인데 GFLOP/s가 37.7% 더 올랐다. v3b(read 벡터화)와 같은
+  메커니즘의 연장선이다: strided scalar 루프로 여러 번 반복하던
+  global→shared 로드를 스레드당 float4 로드 1회로 줄이면서, k-iteration을
+  도는 데 필요한 로드 명령어 개수가 다시 줄었다. 여기에 B의 shared-store가
+  float4로 합쳐지면서 store bank conflict까지 개선된 게 더해졌다(A는
+  전치 레이아웃 때문에 여전히 4번의 scalar store지만, 최소한 global read는
+  1번의 float4로 줄었다). 결과적으로 명령어당 처리량이 다시 올라
+  Compute(SM) 56.2%→60.0%, FMA pipe 43.5%→56.5%로 이어졌다 — v3b
+  항목에서 정리한 "occupancy·conflict가 아니라 issue-throughput이
+  병목을 완화한다"는 결론이 이번에도 그대로 성립한다.
+- surprises: (1) 레지스터가 96→113으로 17개나 늘었는데도(로컬 `float4
+  tmp` + 인덱스 변수 증가 때문으로 추정) occupancy 상한(Block Limit
+  Registers=2, 33.33%)은 전혀 바뀌지 않았다 — 128 reg/thread 문턱까지는
+  아직 여유가 있다는 뜻이고, 뒤집어 말하면 register 예산이 15 reg/thread
+  더 남아 있다는 뜻이기도 하다. (2) shared-store conflict가(완전히
+  해소된 건 아니지만) 벡터화만으로 4.5-way→2.4-way, wavefront 비중
+  77.78%→33.33%로 크게 줄었다 — v3b 항목에서 "SASS 레벨 원인 미확인"으로
+  남겨뒀던 store conflict가 B의 벡터화 스토어만으로 상당 부분 완화된
+  셈이지만, A는 전치 레이아웃 때문에 여전히 scalar store라 남은 open
+  item(A store conflict의 SASS 레벨 원인)은 유효하다. (3) shared-load
+  conflict(5.0-way)는 전혀 개선되지 않았다 — 이번 변경은 애초에 read
+  경로를 건드리지 않았으므로 예상대로지만, v4 이후에도 "bank-conflict
+  접근 패턴 자체를 고치는 레버"는 여전히 미해결로 남아 있다.
+- evidence: [NCU details](ncu_register_tile_vec2_details.csv)

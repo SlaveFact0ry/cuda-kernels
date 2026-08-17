@@ -20,7 +20,7 @@ Filled in as each rung lands. `%SoL` = achieved GFLOP/s ÷ cuBLAS GFLOP/s.
 | v1 naive            |  1802.9 |  8.8 | L1TEX/LSU pipe saturation (NOT DRAM-bound — DRAM throughput only 1.6%; one uncoalesced global load per thread per iter) |
 | v2 smem tiling      |  2237.8 | 10.9 | MIO pipe saturation (shared-mem load per iter) + occupancy regression (66.7%, 1024-thread block) |
 | v3 register tiling  |  7490.5 | 36.5 | Register-limited occupancy (96 reg/thread → 33.3% theoretical, 2 blocks/SM) starves latency-hiding — short+long-scoreboard stalls dominate; NOT compute-bound (FMA pipe ~10%), + 50% shared-load bank conflicts (3.2-way) |
-| v3b vectorized loads| 11473.1 | 55.8 | Still register-limited occupancy (96 reg/thread, 33.3%, unchanged from v3), now compute-bound-adjacent (Compute(SM) 56.2%, FMA pipe 43.5%) despite worse shared bank conflicts (5.0-way load, new 4.5-way store) |
+| v3b vectorized loads| 15795.3 | 76.9 | Still register-limited occupancy (113 reg/thread, 33.3%, unchanged from v3), compute-bound-adjacent (Compute(SM) 60.0%, FMA pipe 56.5%); global→shared vectorization halved shared-store conflicts (4.5-way → 2.4-way) while shared-load conflicts stayed at 5.0-way |
 | v4 cp.async pipeline|    —    |  —   | _TODO: stalls hidden?_      |
 | v5 WMMA tensor core |    —    |  —   | _TODO (fp16/tf32)_          |
 
@@ -62,8 +62,10 @@ Ampere-or-newer GPU for the v4/v5 features (v1–v3 build anywhere).
 3. **v3 register/thread tiling** — each thread computes an 8×8 micro-tile in
    registers; raises arithmetic intensity. Occupancy-vs-ILP trade-off lives here.
    - **v3b vectorized loads** — float4 loads for the shared-memory reads feeding
-     regM/regN (2 vectorized loads/operand instead of 8 scalar loads); same
-     TM=TN=8 register footprint as v3.
+     regM/regN (2 vectorized loads/operand instead of 8 scalar loads), and
+     float4 loads for the global→shared A/B staging (1 vectorized load/thread
+     per tile instead of a strided scalar loop); same TM=TN=8 register
+     footprint family as v3 (96 → 113 reg/thread, occupancy unchanged).
 4. **v4 cp.async software pipeline** — float4 async global→shared copies with a
    multi-stage (2–4) buffer, hiding global latency behind compute. *This is the
    rung Ampere unlocks — impossible on the previous Turing card.* Same structure
