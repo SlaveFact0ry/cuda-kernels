@@ -16,12 +16,17 @@ Filled in as each rung lands. `%SoL` = achieved GFLOP/s ÷ cuBLAS GFLOP/s.
 
 | version             | GFLOP/s | %SoL | dominant limiter (from NCU) |
 |---------------------|--------:|-----:|-----------------------------|
-| v0 cuBLAS (SoL)     | 22873.3 | 100  | reference                   |
-| v1 naive            |  2151.2 |  9.4 | L1TEX/LSU pipe saturation (NOT DRAM-bound — DRAM throughput only 1.6%; one uncoalesced global load per thread per iter) |
-| v2 smem tiling      |  2910.8 | 12.7 | MIO pipe saturation (shared-mem load per iter) + occupancy regression (66.7%, 1024-thread block) |
-| v3 register tiling  |  9431.4 | 41.0 | Register-limited occupancy (96 reg/thread → 33.3% theoretical, 2 blocks/SM) starves latency-hiding — short+long-scoreboard stalls dominate; NOT compute-bound (FMA pipe ~10%), + 50% shared-load bank conflicts (3.2-way) |
+| v0 cuBLAS (SoL)     | 20543.9 | 100  | reference                   |
+| v1 naive            |  1802.9 |  8.8 | L1TEX/LSU pipe saturation (NOT DRAM-bound — DRAM throughput only 1.6%; one uncoalesced global load per thread per iter) |
+| v2 smem tiling      |  2237.8 | 10.9 | MIO pipe saturation (shared-mem load per iter) + occupancy regression (66.7%, 1024-thread block) |
+| v3 register tiling  |  7490.5 | 36.5 | Register-limited occupancy (96 reg/thread → 33.3% theoretical, 2 blocks/SM) starves latency-hiding — short+long-scoreboard stalls dominate; NOT compute-bound (FMA pipe ~10%), + 50% shared-load bank conflicts (3.2-way) |
+| v3b vectorized loads| 11473.1 | 55.8 | Still register-limited occupancy (96 reg/thread, 33.3%, unchanged from v3), now compute-bound-adjacent (Compute(SM) 56.2%, FMA pipe 43.5%) despite worse shared bank conflicts (5.0-way load, new 4.5-way store) |
 | v4 cp.async pipeline|    —    |  —   | _TODO: stalls hidden?_      |
 | v5 WMMA tensor core |    —    |  —   | _TODO (fp16/tf32)_          |
+
+Measured with GPU clocks locked (`nvidia-smi -lgc`) for cross-session
+reproducibility; see the root README's clock-drift caveat for why that
+matters and why earlier indicative numbers aren't directly comparable.
 
 Roofline plot: [`../docs/roofline.png`](../docs/roofline.png) (regenerate with
 `scripts/roofline.py`; x-axis is algorithmic AI = N/6, assuming full reuse —
@@ -38,7 +43,7 @@ make                 # builds ./bench for sm_86 (override: make ARCH=sm_75)
 make bench-sizes     # 1024 / 2048 / 4096
 make profile KERNEL=naive_sgemm   # NCU on one kernel by name (default: naive_sgemm)
 make profile KERNEL=smem_sgemm
-make sanitize        # compute-sanitizer memcheck on v1-v3 at 1024^3
+make sanitize        # compute-sanitizer memcheck on v1-v3b at 1024^3
 ```
 
 v1 handles arbitrary shapes. v2+ kernels require tile-multiple shapes; the
@@ -56,6 +61,9 @@ Ampere-or-newer GPU for the v4/v5 features (v1–v3 build anywhere).
    lets you opt into ~100 KB smem/block for bigger tiles.
 3. **v3 register/thread tiling** — each thread computes an 8×8 micro-tile in
    registers; raises arithmetic intensity. Occupancy-vs-ILP trade-off lives here.
+   - **v3b vectorized loads** — float4 loads for the shared-memory reads feeding
+     regM/regN (2 vectorized loads/operand instead of 8 scalar loads); same
+     TM=TN=8 register footprint as v3.
 4. **v4 cp.async software pipeline** — float4 async global→shared copies with a
    multi-stage (2–4) buffer, hiding global latency behind compute. *This is the
    rung Ampere unlocks — impossible on the previous Turing card.* Same structure
@@ -64,7 +72,7 @@ Ampere-or-newer GPU for the v4/v5 features (v1–v3 build anywhere).
    lifts the compute roof to ~142 TFLOP/s, flipping the limiter back to feeding
    the cores. Strongest variant = cp.async-fed WMMA.
 
-v1–v3 are implemented; **v4–v5 are stubs with specs in the source
+v1–v3b are implemented; **v4–v5 are stubs with specs in the source
 comments** — implement one commit at a time so the history shows the progression.
 
 ## Layout

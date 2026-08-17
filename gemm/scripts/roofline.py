@@ -20,16 +20,21 @@ import numpy as np
 PEAK_FP32_GFLOPS = 35600.0   # ~35.6 TFLOPS fp32 (3090 boost, 2x FP32 datapath) — verify
 PEAK_BW_GBs      = 936.0     # ~936 GB/s (GDDR6X, 384-bit) — verify
 
+# NOTE: the *_2048 points below predate GPU clock-locking (no locked-clock
+# 2048^3 measurement exists yet), while the *_4096 points for v0-v3b are from
+# a locked-clock run (`nvidia-smi -lgc`) — the two sets aren't directly
+# comparable to each other.
 # (label, arithmetic_intensity_flop_per_byte, achieved_GFLOPs)
 points = [
     ("v0_cublas 2048", 2048/6, 22247.4),
-    ("v0_cublas 4096", 4096/6, 22873.3),
+    ("v0_cublas 4096", 4096/6, 20543.9),
     ("v1_naive 2048",  2048/6,  2213.1),
-    ("v1_naive 4096",  4096/6,  2151.2),
+    ("v1_naive 4096",  4096/6,  1802.9),
     ("v2_smem 2048",   2048/6,  2985.1),
-    ("v2_smem 4096",   4096/6,  2910.8),
+    ("v2_smem 4096",   4096/6,  2237.8),
     ("v3_regtile 2048", 2048/6, 8791.7),
-    ("v3_regtile 4096", 4096/6, 9431.4),
+    ("v3_regtile 4096", 4096/6, 7490.5),
+    ("v3b_vectorize 4096", 4096/6, 11473.1),
 ]
 
 ai = np.logspace(-1, 4, 400)

@@ -177,3 +177,81 @@ Template:
   뜻으로, v4/이후 작업에는 독립적인 레버가 두 개 남아 있다: occupancy를
   올리는 것(더 작은 TM/TN 또는 더 짧게 사는 레지스터)과, bank-conflict
   접근 패턴 자체를 고치는 것.
+
+## v3b_vectorize (2026-08-17)
+- change: v3의 shared-memory read를 벡터화했다. `As`를 `[BM][BK]`가 아니라
+  전치된 `[BK][BM]` 레이아웃으로 스테이징하고, `regM`/`regN`을 채울 때
+  v3처럼 `TM`/`TN`번의 scalar 원소 루프(`As[ty*TM+i][k]` 8회,
+  `Bs[k][tx*TN+j]` 8회) 대신 `reinterpret_cast<float4*>`로 operand당
+  2번의 float4 load로 8개 원소를 한 번에 읽는다. `BM=BN=128, BK=8,
+  TM=TN=8`은 v3와 동일하게 유지.
+- result (4096³, locked clock 기준— v0~v3와 동일 세션/조건):
+  - 11.979 ms, 11473.1 GFLOP/s, 55.8% SoL (v0 cuBLAS 20543.9 GFLOP/s)
+  - v3(7490.5 GFLOP/s) 대비 +53.2% GFLOP/s, 같은 locked-clock 실행 기준.
+- bottleneck before: v3는 register tiling으로 MIO 파이프 포화는 풀었지만
+  (Mem Pipes Busy 84%→20.0%, 1024³ 프로파일) compute-bound로 못 넘어갔다.
+  96 reg/thread가 강제하는 33.3% theoretical occupancy(Block Limit
+  Registers=2) 때문에 memory latency를 숨길 warp가 부족했고,
+  `As[ty*TM+i][k]` 컬럼 접근이 shared-load wavefront의 50.0%에서 평균
+  3.2-way bank conflict를 냈다.
+- bottleneck after (NCU 실측 확인, 4096³, `register_tile_vec` 커널,
+  `ncu --import v3b.ncu-rep`): **주의: 이 프로파일은 4096³(grid 1024
+  블록/256 스레드)에서 떴고, 위 v3 항목의 NCU 수치(Mem Pipes Busy 20.0%,
+  3.2-way/50% bank conflict)는 `make profile` 기본 타겟인 1024³에서 뜬
+  것이다. 두 항목의 원시 퍼센트 대부분(Memory Throughput 67.19%,
+  Compute(SM) 56.21%, DRAM 8.78% 등)은 shape이 달라 1:1로 직접 비교할 수
+  없다.** 다만 레지스터 풋프린트/occupancy는 shape 무관이라 안전하게
+  비교 가능한데: 96 reg/thread, Block Limit Registers=2, Theoretical
+  Occupancy 33.33%(achieved 32.36%)로 v3와 완전히 동일하다 — read 쪽만
+  벡터화해서는 occupancy가 전혀 바뀌지 않는다는 뜻이다.
+
+  occupancy·conflict 구조는 그대로거나 오히려 나빠졌는데도 Compute(SM)
+  Throughput은 56.21%까지 올랐고, NCU rule engine은 FMA를 "the
+  highest-utilized pipeline (43.5%)... well-utilized, but should not be
+  a bottleneck"이라고 지목한다(v3의 fma-heavy 10.3%/fma-lite 9.7%에서
+  큰 도약). Scheduler는 One or More Eligible 59.36% / No Eligible
+  40.64%, Active Warps Per Scheduler 3.89, Eligible Warps Per Scheduler
+  1.51, Warp Cycles Per Issued Instruction 6.55(scheduler당 약 1.7
+  사이클마다 1회 issue)로, v3보다 issue 여건이 개선됐다.
+
+  bank conflict는 벡터화에도 불구하고 오히려 악화됐다: shared-load는
+  134,217,728 요청 전체에서 평균 5.0-way conflict(268,435,456
+  conflicts, 전체 671,098,541 wavefront의 40.00%) — v3의 3.2-way보다
+  way-count는 늘고 wavefront 비율은 줄었다(40% vs 50%, shape 차이는
+  감안해야 한다). 게다가 v3에서는 전혀 언급되지 않았던 **shared-store
+  bank conflict**가 새로 나타난다: 33,554,432 store 요청에서 평균
+  4.5-way(117,440,512 conflicts, 전체 150,995,251 wavefront의
+  77.78%) — 전치된 `As[BK][BM]` 스테이징 레이아웃이 store address
+  패턴을 바꿨을 가능성이 있지만, SASS 레벨 원인은 아직 추적하지
+  않았다(v2 항목의 "unresolved discrepancy"와 같은 성격의 open item으로
+  남겨둔다).
+
+  Global load는 sector당 28.9/32바이트 사용(개선여지 약 6.5%), global
+  store는 4.0/32바이트(개선여지 약 58.8%) — 둘 다 v3와 동일한 기존
+  패턴(coalesced C-store 미적용)이고 v3b가 새로 만든 문제는 아니다.
+  DRAM Throughput 8.78%로 여전히 DRAM-bound는 아니다.
+- why it worked (or didn't): occupancy도 안 오르고 bank conflict도
+  개선되지 않았는데(오히려 store conflict가 새로 생겼는데) GFLOP/s는
+  v3 대비 +53.2% 올랐다. 데이터가 뒷받침하는 설명은 "conflict 해소"가
+  아니라 "명령어당 처리량"이다: `TM`/`TN` 루프 8회의 scalar shared
+  load를 float4 load 2회로 줄이면, 각 살아남은 로드 명령어가(bank
+  conflict 때문에) 더 많이 replay되긴 해도, k-iteration 하나를 도는 데
+  필요한 shared-load *명령어 개수* 자체가 크게 줄어든다. 그 결과
+  issue된 명령어당 retire되는 FMA 비율이 올라갔고, 이게 그대로
+  Compute(SM) Throughput 20.0%→56.21%, FMA pipe ~10%→43.5%로
+  나타났다. occupancy(33.33%, 동일)나 bank conflict(오히려 악화)가
+  고쳐져서 빨라진 게 아니라, 명령어 발행 자체가 줄어든 것이 병목을
+  완화시켰다는 뜻이다.
+- surprises: (1) 벡터화가 오히려 bank conflict를 키웠다 — load는
+  3.2-way→5.0-way, 게다가 v3에서는 안 보이던 store conflict(4.5-way,
+  wavefront의 77.78%)까지 새로 생겼다. 직관과 반대되는 결과라 SASS
+  레벨 원인 추적이 필요하다(미확인, open item). (2) occupancy가 조금도
+  개선되지 않았다 — read 벡터화는 레지스터 사용량(96 reg/thread)에
+  전혀 영향을 주지 않아서 v3와 Block Limit Registers=2/33.33%가
+  정확히 동일하다. (3) 그럼에도 성능이 크게 오른 건 순전히 "명령어
+  개수 감소로 인한 FMA-per-issued-instruction 상승" 효과로 보인다 —
+  occupancy나 conflict가 아니라 issue-throughput이 이번 병목 완화의
+  진짜 메커니즘이라는 뜻이라, v4 이후에는 (a) bank conflict 자체를
+  고치는 레버와 (b) occupancy를 올리는 레버가 여전히 독립적으로 남아
+  있다.
+- evidence: [NCU details](ncu_register_tile_vec_details.csv)
