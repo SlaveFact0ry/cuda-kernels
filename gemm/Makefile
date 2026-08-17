@@ -5,8 +5,14 @@ NVCC    ?= nvcc
 NVFLAGS := -O3 -arch=$(ARCH) -std=c++17 -I../common -Iinclude -lineinfo
 LDLIBS  := -lcublas
 
+VERBOSE ?= 0
+ifeq ($(VERBOSE),1)
+  NVFLAGS += -Xptxas -v
+endif
+
+
 SRC := src/v0_cublas.cu src/v1_naive.cu src/v2_smem_tiling.cu \
-       src/v3_register_tile.cu src/v4_cp_async_pipe.cu src/v5_wmma_tc.cu \
+       src/v3_register_tile.cu src/v3b_vectorize.cu src/v4_cp_async_pipe.cu src/v5_wmma_tc.cu \
        driver/bench.cu
 
 bench: $(SRC)
