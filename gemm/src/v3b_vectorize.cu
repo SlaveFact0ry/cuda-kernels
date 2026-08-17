@@ -13,10 +13,10 @@ __global__ void register_tile_vec(int M, int N, int K, float alpha, float beta,
                               float* __restrict__ C){
 
   int tid = blockDim.x * threadIdx.y + threadIdx.x;
-  int strideA = (blockDim.x * blockDim.y)/BK;
-  int strideB = (blockDim.x * blockDim.y)/BN;
-  int innerRowA = tid / BK; int innerColA = tid % BK;
-  int innerRowB = tid / BN; int innerColB = tid % BN;
+  int innerRowA = tid / (BK/4); int innerColA = tid % (BK/4);
+  int innerRowB = tid / (BN/4); int innerColB = tid % (BN/4);
+  int col0      = innerColA * 4;
+  int col0B     = innerColB * 4;
 
   __shared__ float As[BK][BM], Bs[BK][BN];
 
@@ -28,8 +28,12 @@ __global__ void register_tile_vec(int M, int N, int K, float alpha, float beta,
   C += blockIdx.y * BM * N + blockIdx.x * BN;
 
   for (int t = 0; t < K; t += BK) {
-    for(int off = 0; off < BM; off += strideA) As[innerColA][innerRowA + off] = A[ (innerRowA + off)* K + innerColA];
-    for(int off = 0; off < BK; off += strideB) Bs[innerRowB +off][innerColB] = B[ (innerRowB + off) * N + innerColB ];
+    float4 tmp = reinterpret_cast<const float4*>(&A[innerRowA* K + col0])[0];
+    As[col0][innerRowA] = tmp.x;
+    As[col0+1][innerRowA] = tmp.y;
+    As[col0+2][innerRowA] = tmp.z;
+    As[col0+3][innerRowA] = tmp.w;
+    reinterpret_cast<float4*>(&Bs[innerRowB][col0B])[0] = reinterpret_cast<const float4*>(&B[innerRowB * N + col0B ])[0];
     __syncthreads();
     for (int k = 0; k < BK; ++k) {
         reinterpret_cast<float4*>(regM)[0] = reinterpret_cast<const float4*>(&As[k][threadIdx.y*TM])[0];
