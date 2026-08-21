@@ -21,7 +21,8 @@ Filled in as each rung lands. `%SoL` = achieved GFLOP/s ÷ cuBLAS GFLOP/s.
 | v2 smem tiling      |  2237.8 | 10.9 | MIO pipe saturation (shared-mem load per iter) + occupancy regression (66.7%, 1024-thread block) |
 | v3 register tiling  |  7490.5 | 36.5 | Register-limited occupancy (96 reg/thread → 33.3% theoretical, 2 blocks/SM) starves latency-hiding — short+long-scoreboard stalls dominate; NOT compute-bound (FMA pipe ~10%), + 50% shared-load bank conflicts (3.2-way) |
 | v3b vectorized loads| 15795.3 | 76.9 | Still register-limited occupancy (113 reg/thread, 33.3%, unchanged from v3), compute-bound-adjacent (Compute(SM) 60.0%, FMA pipe 56.5%); global→shared vectorization halved shared-store conflicts (4.5-way → 2.4-way) while shared-load conflicts stayed at 5.0-way |
-| v4 cp.async pipeline|    —    |  —   | _TODO: stalls hidden?_      |
+| v4a manual double-buffer| 11939.6 | 58.1 | Regresses vs v3b — `As` restaged as `[BM][BK]` (row-major) to support the async-copy write pattern, but this kills the `float4` vectorization of the `regM` shared-load: 8 scalar LDS/operand instead of 2 vectorized ones. 102 reg/thread, 33.3% occupancy (unchanged); shared LDS instruction count balloons to 335.5M vs v3b's 134.2M (2.5×) |
+| v4 cp.async pipeline| 12738.1 | 62.0 | Same `[BM][BK]` layout regression as v4a (shared LDS 348.1M, 2.6× v3b), still register-limited occupancy (92 reg/thread, 33.3%) — but cp.async genuinely helps: MIO-throttle stall ratio drops 2.29→1.64 vs v4a, and STS (shared-store) instructions go to 0 (writes land via async copy, not a separate store). Net: latency-hiding improves but doesn't offset the lost regM vectorization, so v4 still trails v3b |
 | v5 WMMA tensor core |    —    |  —   | _TODO (fp16/tf32)_          |
 
 Measured with GPU clocks locked (`nvidia-smi -lgc`) for cross-session
@@ -66,15 +67,23 @@ Ampere-or-newer GPU for the v4/v5 features (v1–v3 build anywhere).
      float4 loads for the global→shared A/B staging (1 vectorized load/thread
      per tile instead of a strided scalar loop); same TM=TN=8 register
      footprint family as v3 (96 → 113 reg/thread, occupancy unchanged).
-4. **v4 cp.async software pipeline** — float4 async global→shared copies with a
-   multi-stage (2–4) buffer, hiding global latency behind compute. *This is the
-   rung Ampere unlocks — impossible on the previous Turing card.* Same structure
-   CUTLASS uses.
-5. **v5 WMMA tensor cores** — fp16 (16×16×16) / tf32 (16×16×8), fp32 accumulate;
+4. **v4a manual double-buffer** — restage `As`/`Bs` as `[2][BM][BK]`/`[2][BK][BN]`
+   and prefetch tile k+1 into registers while computing on tile k, swapping
+   buffers with one `__syncthreads()` per iteration. Regresses vs v3b: the
+   `[BM][BK]` layout (needed for a contiguous per-thread staging write) breaks
+   the `float4` vectorization of the `regM` shared-load that v3b relied on.
+5. **v4 cp.async software pipeline** — same double-buffered shape as v4a, but
+   the global→shared copy goes through `__pipeline_memcpy_async` (16B async
+   copies, `__pipeline_commit`/`__pipeline_wait_prior`) instead of a
+   register-staged store. *This is the rung Ampere unlocks — impossible on the
+   previous Turing card.* Same structure CUTLASS uses. Hides more latency than
+   v4a (lower MIO-throttle stall, zero explicit shared-stores) but inherits the
+   same `[BM][BK]` regM-vectorization regression, so it still trails v3b.
+6. **v5 WMMA tensor cores** — fp16 (16×16×16) / tf32 (16×16×8), fp32 accumulate;
    lifts the compute roof to ~142 TFLOP/s, flipping the limiter back to feeding
    the cores. Strongest variant = cp.async-fed WMMA.
 
-v1–v3b are implemented; **v4–v5 are stubs with specs in the source
+v1–v4 are implemented; **v5 is a stub with a spec in the source
 comments** — implement one commit at a time so the history shows the progression.
 
 ## Layout

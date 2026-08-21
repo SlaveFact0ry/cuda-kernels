@@ -320,3 +320,121 @@ Template:
   경로를 건드리지 않았으므로 예상대로지만, v4 이후에도 "bank-conflict
   접근 패턴 자체를 고치는 레버"는 여전히 미해결로 남아 있다.
 - evidence: [NCU details](ncu_register_tile_vec2_details.csv)
+
+---
+
+## v4a_doublebuffer (2026-08-21)
+- change: 수동 소프트웨어 파이프라인(더블버퍼). `As`/`Bs`를 `[2][BM][BK]`/
+  `[2][BK][BN]`로 두 벌 만들고, 매 k-타일 반복에서 (1) 다음 타일을
+  레지스터(`pf_a`/`pf_b`)로 먼저 global load, (2) 현재 버퍼로 전체
+  k-루프 compute, (3) prefetch해둔 값을 다른 버퍼에 store 후
+  `__syncthreads()` 한 번으로 버퍼 swap(`cur ^= 1`) — global latency를
+  compute 뒤에 숨기는 게 목표. `BM=BN=128, BK=8, TM=TN=8`은 이전과 동일.
+- result (4096³, NCU 프로파일 세션 동일 실행 기준 — 이번 세션은 GPU
+  클럭을 lock하지 않아 run-to-run 변동폭이 이전 항목들(≈locked)보다 약간
+  크다, ±1~2%):
+  - 11.529 ms, 11920.9 GFLOP/s, 58.7% SoL
+  - v3b(15795.3 GFLOP/s, 76.9%) 대비 **-24.5% GFLOP/s — 역행(regression)**.
+- bottleneck before: v3b는 113 reg/thread, Theoretical Occupancy 33.33%로
+  register-limited, Compute(SM) 60.0%/FMA 56.5%까지 올라온 상태였다.
+- bottleneck after (NCU 실측, 4096³, `double_buffer` 커널,
+  `ncu_double_buffer_details.csv`): register는 102 reg/thread로 v3b보다
+  오히려 줄었지만(`float4 pf_a/pf_b` 임시 배열이 늘었음에도) Block Limit
+  Registers=2, Theoretical Occupancy 33.33%(achieved 32.38%)는 그대로다 —
+  128 reg/thread 문턱 안에서는 register 수가 줄어도 occupancy 상한이 안
+  바뀐다는 v3b 항목의 관찰이 여기서도 성립한다. Compute(SM) 54.32%, FMA
+  42.6%로 v3b보다 **낮아졌다**(60.0%→54.32%, 56.5%→42.6%). Memory
+  Throughput 91.86%, DRAM 10.33%. shared-load bank conflict는 3.2-way(v3b
+  5.0-way보다 way-count는 줄었지만 wavefront 비중은 49.88%로 v3b의
+  40.00%보다 늘었다). Scheduler는 1.8사이클당 1회 issue, active warp
+  3.89, eligible warp 1.45/scheduler(v3b의 1.51보다 소폭 나쁨).
+
+  결정적 지표는 shared-memory load 명령어 수다: `smsp__inst_executed_op_
+  shared_ld.sum` = 335,544,320 — v3b의 134,217,728 대비 **2.5배**. 원인은
+  레이아웃 변경: v3b는 `As`를 전치된 `[BK][BM]`로 둬서 `regM`을
+  `reinterpret_cast<float4*>(&As[k][ty*TM])`로 2번의 float4 LDS에 8개
+  원소를 담았다. v4a는 더블버퍼 async-copy 스테이징(다음 단계에서
+  cp.async로 이어질 것을 염두에 둔 구조)을 위해 `As`를 `[BM][BK]`로
+  바꿨는데, 그러면 `k`가 고정된 채 서로 다른 row `i`(=`ty*TM+i`)를 읽는
+  것은 메모리상 BK=8칸씩 떨어진 strided 접근이 되어 float4로 묶을 수
+  없다 — 그래서 `for (int i=0;i<TM;++i) regM[i]=As[cur][ty*TM+i][k]`처럼
+  스칼라 LDS 8번으로 쪼개졌다.
+- why it worked (or didn't): 안 됐다. 더블버퍼링이 숨기려 한 global
+  latency보다, 레이아웃 전환이 만들어낸 shared-load 명령어 증가(2.5배)가
+  더 크게 손해를 봤다. Occupancy는 그대로고 issue efficiency(eligible
+  warp/scheduler)는 오히려 소폭 나빠졌다 — 알고리즘(더블버퍼 프리페치)
+  자체는 맞는 방향이지만, 그걸 얹기 위해 바꾼 shared-memory 레이아웃이
+  이전 rung(v3b)이 확보해둔 벡터화 read를 깨서 순손실이 났다.
+- surprises: (1) register가 113→102로 줄었는데도 occupancy 상한은
+  꼼짝하지 않았다 — v3b 항목의 "128 reg 문턱까지 15 reg 여유가 있다"는
+  관찰이 여기서도 그대로 유효함을 재확인. (2) "prefetch로 latency
+  숨기기"라는 원래 목표가 shared-load 명령어 수 폭증에 완전히 묻혔다 —
+  이번 rung에서는 알고리즘 아이디어보다 레이아웃 선택이 실제 성능을 더
+  크게 좌우했다.
+- evidence: [NCU details](ncu_double_buffer_details.csv)
+
+---
+
+## v4_cp_async_pipe (2026-08-21)
+- change: v4a와 동일한 `[2][BM][BK]`/`[2][BK][BN]` 더블버퍼 shape을 쓰되,
+  global→shared 복사를 레지스터 경유 store 대신 Ampere의 cp.async
+  (`__pipeline_memcpy_async`로 16B 비동기 복사, `__pipeline_commit`으로
+  스테이지 봉인, `__pipeline_wait_prior(0)`로 대기)로 대체한 2-stage
+  소프트웨어 파이프라인. `BM=BN=128, BK=8, TM=TN=8`은 동일.
+- 버그 사냥 (구현 직후 `cudaDeviceSynchronize()` 단계에서 misaligned
+  address 런타임 에러 발생, 3개를 순차로 발견/수정):
+  1. steady-state에서 B의 다음 타일 prefetch가 stride로 `K`를 썼다
+     (`&B[(innerRowB+nxt)*K + col0B]`) — B는 `K×N` 행렬이라 stride는
+     `N`이어야 한다. `*K` → `*N`으로 수정.
+  2. `innerRowA`/`innerColA`가 `tid / BK`, `tid % BK`로 계산돼 있었다
+     (v3b/v4a는 `tid / (BK/4)`, `tid % (BK/4)`). 이 때문에 `innerRowA`가
+     0..31만 커버해 BM=128행 중 1/4만 채워졌고, `col0(=innerColA*4)`이
+     0..28까지 뻗어 BK=8 폭을 벗어났다.
+  3. 4곳의 `__pipeline_memcpy_async` 목적지 주소가 전부 4-스케일된
+     `col0`/`col0B`가 아니라 스케일 안 된 `innerColA`/`innerColB`를
+     그대로 썼다 — 16B(4-float) 복사인데 목적지 오프셋이 4-float 배수가
+     아닌 경우가 발생해 misaligned address를 유발했다. 4곳 모두
+     `col0`/`col0B`로 수정.
+- result (4096³, 같은 클럭-미고정 세션, ±1~2% 변동 감안):
+  - 10.811 ms, 12712.4 GFLOP/s, 62.5% SoL
+  - v4a(11920.9 GFLOP/s, 58.7%) 대비 +6.6% GFLOP/s, v3b(15795.3, 76.9%)
+    대비는 여전히 -19.5% 낮음.
+- bottleneck before: v4a는 102 reg/thread, 33.3% occupancy에서 shared
+  LDS 명령어가 v3b 대비 2.5배로 늘어 issue efficiency가 나쁜 상태였다
+  (scheduler 1.8사이클당 1회 issue, eligible warp 1.45).
+- bottleneck after (NCU 실측, 4096³, `cp_async_pipe` 커널,
+  `ncu_cp_async_pipe_details.csv`): register 92 reg/thread(v4a보다 10
+  적음), Block Limit Registers=2, Theoretical Occupancy 33.33%(achieved
+  32.38%) — v4a와 동일, register가 더 줄어도 occupancy 상한은 안 바뀐다.
+  Compute(SM) 59.50%(v4a 54.32%), FMA 45.6%(v4a 42.6%)로 소폭 개선.
+  결정적으로 STS(shared-store) 명령어가 **0건**(v4a는 8,388,608건) —
+  cp.async가 global→shared 쓰기를 완전히 대체했기 때문이다. 그 결과
+  MIO-throttle stall ratio가 2.29(v4a) → 1.64로 뚜렷이 줄었다.
+
+  다만 shared LDS는 348,102,656건으로 v4a(335,544,320)보다 오히려 소폭
+  많다(prologue의 별도 로드 때문으로 추정) — v4a에서 지적한 "regM
+  스칼라-로드" 문제(`As`가 `[BM][BK]`라 float4 벡터화 불가)는 전혀
+  해결되지 않고 그대로 남아 있다. shared-load bank conflict(3.2-way,
+  49.86% wavefront), uncoalesced shared access(51%), uncoalesced global
+  access(18%)도 v4a와 사실상 동일. Scheduler는 1.7사이클당 1회 issue,
+  eligible warp 1.43/scheduler(v4a 1.45와 거의 동일) — issue 효율
+  자체는 거의 개선되지 않았다.
+- why it worked (or didn't): cp.async는 설계 의도대로 정확히 작동했다 —
+  STS를 없애고 MIO throttle을 낮췄다(2.29→1.64). 하지만 이 latency-hiding
+  이득은 v4a가 만든 진짜 병목(레이아웃 전환으로 인한 regM 벡터화 상실 →
+  shared LDS 2.5배 증가)을 전혀 건드리지 못한다 — 그 병목은 compute
+  phase의 읽기 패턴 문제이지 global→shared 전송 메커니즘과는 무관하기
+  때문이다. 그래서 v4는 v4a보다 소폭 빠르지만(+6.6%), 벡터화된 read를
+  유지한 v3b에는 여전히 크게 못 미친다.
+- surprises: (1) misaligned address 에러의 진짜 원인은 "정렬"이 아니라
+  인덱스 계산 실수(스케일 안 된 `innerColA`/`innerColB`를 그대로 씀)였다
+  — cp.async의 16B 정렬 요구가 없었다면 조용히 틀린 값을 읽는
+  correctness 버그로 남았을 것이다(디버깅 관점에서는 misaligned fault로
+  바로 죽어준 게 오히려 다행이었다). (2) register가 92까지 더 줄어도
+  occupancy 상한은 꼼짝 안 한다 — v3b부터 이어지는 "128 reg/thread
+  문턱 안에서는 register 수가 occupancy에 영향 없다"는 관찰이 v4에서도
+  유지된다. (3) 레이아웃 문제를 고치지 않는 한 cp.async 자체의 이득은
+  상한이 뚜렷하다 — 다음 실험은 `As`를 v3b식 전치 레이아웃으로 되돌리며
+  cp.async를 유지하는 조합(예: 전치된 목적지에 4번의 scalar 16B async
+  copy로 흩뿌리기)이어야 한다.
+- evidence: [NCU details](ncu_cp_async_pipe_details.csv)
