@@ -15,6 +15,7 @@ bool launch_v1_naive   (int, int, int, float, float, const float*, const float*,
 bool launch_v2_smem    (int, int, int, float, float, const float*, const float*, float*);
 bool launch_v3_regtile (int, int, int, float, float, const float*, const float*, float*);
 bool launch_v3b_vectorize(int, int, int, float, float, const float*, const float*, float*);
+bool launch_v4a_doublebuffer(int, int, int, float, float, const float*, const float*, float*);
 bool launch_v4_cp_async(int, int, int, float, float, const float*, const float*, float*);
 bool launch_v5_wmma    (int, int, int, float, float, const float*, const float*, float*);
 
@@ -27,6 +28,7 @@ inline const Version* version_table(int& count) {
     {"v2_smem_tiling",  launch_v2_smem},
     {"v3_register_tile",launch_v3_regtile},
     {"v3b_vectorize",   launch_v3b_vectorize},
+    {"v4a_doublebuffer",launch_v4a_doublebuffer},
     {"v4_cp_async_pipe",launch_v4_cp_async},
     {"v5_wmma_tc",      launch_v5_wmma},
   };
