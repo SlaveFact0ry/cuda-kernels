@@ -43,7 +43,7 @@ __global__ void double_buffer(int M, int N, int K, float alpha, float beta,
         // (2) compute on CURRENT buffer — the ENTIRE k-loop
         for (int k = 0; k < BK; ++k) {
             for (int i = 0; i < TM; ++i) regM[i] = As[cur][threadIdx.y*TM + i][k];
-            *reinterpret_cast<float4*>(&regN[0]) = *reinterpret_cast<float4*>(&Bs[cur][k][threadIdx.x*TM]);
+            *reinterpret_cast<float4*>(&regN[0]) = *reinterpret_cast<float4*>(&Bs[cur][k][threadIdx.x*TN]);
             *reinterpret_cast<float4*>(&regN[4]) = *reinterpret_cast<float4*>(&Bs[cur][k][threadIdx.x*TN+4]);
             for (int i = 0; i < TM; ++i)
                 for (int j = 0; j < TN; ++j) acc[i][j] += regM[i] * regN[j];
