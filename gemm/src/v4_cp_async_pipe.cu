@@ -61,11 +61,7 @@ __global__ void cp_async_pipe(int M, int N, int K, float alpha, float beta,
   B += blockIdx.x * BN;
   C += blockIdx.y * BM * N + blockIdx.x * BN;
 
-  // ---- prologue: tile 0 -> buffer 0 ----
-  // *reinterpret_cast<float4*>(&pf_a) = *reinterpret_cast<const float4*>(&A[innerRowA* K +col0]);
-  // *reinterpret_cast<float4*>(&pf_b) = *reinterpret_cast<const float4*>(&B[innerRowB * N + col0B ]);
-  // *reinterpret_cast<float4*>(&As[0][innerRowA][innerColA]) = *reinterpret_cast<const float4*>(&pf_a);
-  // *reinterpret_cast<float4*>(&Bs[0][innerRowB][innerColB]) = *reinterpret_cast<const float4*>(&pf_b);
+
   __pipeline_memcpy_async(&As[0][innerRowA][col0], &A[innerRowA* K +col0], 16);  // (1) 16B 비동기 복사 '주문'
   __pipeline_memcpy_async(&Bs[0][innerRowB][col0B], &B[innerRowB * N + col0B ], 16);  // (1) 16B 비동기 복사 '주문'
   __pipeline_commit();                              // (2) 여기까지 주문을 한 '스테이지'로 묶음
@@ -76,16 +72,12 @@ __global__ void cp_async_pipe(int M, int N, int K, float alpha, float beta,
 
     int cur = 0;
     for (int t = 0; t < K; t += BK) {
-        // (1) prefetch NEXT tile into registers — LDG issued BEFORE compute
         int nxt = t + BK;
         if (nxt < K) {
           __pipeline_memcpy_async(&As[cur^1][innerRowA][col0], &A[innerRowA* K +col0 + nxt], 16);  // (1) 16B 비동기 복사 '주문'
           __pipeline_memcpy_async(&Bs[cur^1][innerRowB][col0B], &B[(innerRowB + nxt)* N +col0B], 16);  // (1) 16B 비동기 복사 '주문'
           __pipeline_commit();      // 다음 스테이지 봉인
-            // *reinterpret_cast<float4*>(&pf_a) = *reinterpret_cast<const float4*>(&A[innerRowA* K +col0 + nxt]);
-            // *reinterpret_cast<float4*>(&pf_b) = *reinterpret_cast<const float4*>(&B[(innerRowB+nxt) * N  + col0B]);
         }
-        // (2) compute on CURRENT buffer — the ENTIRE k-loop
         for (int k = 0; k < BK; ++k) {
             for (int i = 0; i < TM; ++i) regM[i] = As[cur][threadIdx.y*TM + i][k];
             *reinterpret_cast<float4*>(&regN[0]) = *reinterpret_cast<float4*>(&Bs[cur][k][threadIdx.x*TN]);
@@ -93,10 +85,7 @@ __global__ void cp_async_pipe(int M, int N, int K, float alpha, float beta,
             for (int i = 0; i < TM; ++i)
                 for (int j = 0; j < TN; ++j) acc[i][j] += regM[i] * regN[j];
         }
-        // (3) store prefetched tile into the OTHER buffer — ONE sync, THEN swap
         if (nxt < K) {
-            // *reinterpret_cast<float4*>(&As[cur^1][innerRowA][innerColA]) = *reinterpret_cast<const float4*>(&pf_a);
-            // *reinterpret_cast<float4*>(&Bs[cur^1][innerRowB][innerColB]) = *reinterpret_cast<const float4*>(&pf_b);
           __pipeline_wait_prior(0);   // in-flight 0개 될 때까지 (2-stage)
           __syncthreads();
           cur ^= 1;                                     // 버퍼 교체
