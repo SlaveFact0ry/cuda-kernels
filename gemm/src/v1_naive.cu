@@ -23,8 +23,9 @@ __global__ void naive_sgemm(int M, int N, int K, float alpha, float beta,
 
 bool launch_v1_naive(int M, int N, int K, float alpha, float beta,
                      const float* dA, const float* dB, float* dC) {
-  dim3 block(16, 16);
-  dim3 grid((N + block.x - 1) / block.x, (M + block.y - 1) / block.y);
+  constexpr int BX = 16, BY = 16;    // x -> N (col), y -> M (row)
+  dim3 block(BX, BY);
+  dim3 grid(div_up(N, BX), div_up(M, BY));  // 1 element per thread -> divisor is blockDim
   naive_sgemm<<<grid, block>>>(M, N, K, alpha, beta, dA, dB, dC);
   CUDA_CHECK(cudaGetLastError());
   return true;

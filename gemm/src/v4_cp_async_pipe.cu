@@ -108,8 +108,8 @@ bool launch_v4_cp_async(int M, int N, int K, float alpha, float beta,
             BM, BN, BK, M, N, K);
     return false;                    // harness skips the row
     }
-    dim3 block(( BM / TM ) , ( BN / TN )) ;
-    dim3 grid(N / BN, M / BM);         // exact division now — no false ceil-div promise
+    dim3 block(BN / TN, BM / TM);              // x -> N (col), y -> M (row)
+    dim3 grid(div_up(N, BN), div_up(M, BM));   // exact by the guard above
     cp_async_pipe<<<grid, block>>>(M, N, K, alpha, beta, dA, dB, dC);
     CUDA_CHECK(cudaGetLastError());
     return true;

@@ -27,6 +27,16 @@
     }                                                                           \
   } while (0)
 
+// ---- launch geometry --------------------------------------------------------
+// ceil(a / b). Use it to turn a PROBLEM extent into a block count, where the
+// divisor is the number of elements one block covers along that axis -- that is
+// blockDim for a one-element-per-thread kernel, and the tile width (BM/BN) for
+// a register-tiled one. Dividing an already-tiled count by blockDim mixes the
+// two levels and undercounts blocks.
+__host__ __device__ constexpr int div_up(int a, int b) {   // constexpr implies inline
+  return (a + b - 1) / b;
+}
+
 // ---- GPU event timer --------------------------------------------------------
 struct GpuTimer {
   cudaEvent_t a, b;
