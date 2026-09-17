@@ -100,10 +100,10 @@ __global__ void warptiling_notranspose(int M, int N, int K, float alpha, float b
     }
 }
 
-bool launch_v5b_wtnt(int M, int N, int K, float alpha, float beta,
+bool launch_v4e_wtnt(int M, int N, int K, float alpha, float beta,
                     const float* dA, const float* dB, float* dC) {
     if (M % BM || N % BN || K % BK) {
-        fprintf(stderr,"v5b_wtnt: requires M,N,K multiples of %d/%d/%d (got %d,%d,%d)\n",BM, BN, BK, M, N, K);
+        fprintf(stderr,"v4e_wtnt: requires M,N,K multiples of %d/%d/%d (got %d,%d,%d)\n",BM, BN, BK, M, N, K);
     return false;                    // harness skips the row
     }
     dim3 block(NUM_THREADS);              // x -> N (col), y -> M (row)
