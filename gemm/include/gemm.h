@@ -26,6 +26,8 @@ bool launch_v4g_db_tp_swizzle(int, int, int, float, float, const float*, const f
 bool launch_v4g2(int, int, int, float, float, const float*, const float*, float*);
 bool launch_v4h_a_tp_b_async(int, int, int, float, float, const float*, const float*, float*);
 bool launch_v4g3(int, int, int, float, float, const float*, const float*, float*);
+bool launch_v4i(int, int, int, float, float, const float*, const float*, float*);
+bool launch_v4j(int, int, int, float, float, const float*, const float*, float*);
 bool launch_v5_wmma    (int, int, int, float, float, const float*, const float*, float*);
 
 struct Version { const char* name; GemmLauncher fn; };
@@ -48,6 +50,8 @@ inline const Version* version_table(int& count) {
     {"v4g2",             launch_v4g2},
     {"v4h_a_tp_b_async", launch_v4h_a_tp_b_async},
     {"v4g3",             launch_v4g3},
+    {"v4i",              launch_v4i},
+    {"v4j",              launch_v4j},
 {"v5_wmma_tc",      launch_v5_wmma},
   };
   count = sizeof(table) / sizeof(table[0]);
