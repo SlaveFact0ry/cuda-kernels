@@ -9,7 +9,15 @@
 #define WN 32
 #define WNITER 2
 #define NUM_THREADS 256
-
+// #define BN 64
+// #define BM 64
+// #define BK 8
+// #define TM 4
+// #define TN 4
+// #define WM 32
+// #define WN 32
+// #define WNITER 2
+// #define NUM_THREADS 128
 constexpr uint WARPSIZE  = 32;
 constexpr uint NUM_WARPS = NUM_THREADS / WARPSIZE;
 constexpr uint WMITER = (WM * WN) / (WARPSIZE * TM * TN * WNITER);
@@ -122,10 +130,10 @@ __global__ void warptiling_doublebuffer(int M, int N, int K, float alpha, float 
     }
 }
 
-bool launch_v5a_wtdb(int M, int N, int K, float alpha, float beta,
+bool launch_v4d_wtdb(int M, int N, int K, float alpha, float beta,
                     const float* dA, const float* dB, float* dC) {
     if (M % BM || N % BN || K % BK) {
-        fprintf(stderr,"v5a_wtdb: requires M,N,K multiples of %d/%d/%d (got %d,%d,%d)\n",BM, BN, BK, M, N, K);
+        fprintf(stderr,"v4d_wtdb: requires M,N,K multiples of %d/%d/%d (got %d,%d,%d)\n",BM, BN, BK, M, N, K);
     return false;                    // harness skips the row
     }
     dim3 block(NUM_THREADS);              // x -> N (col), y -> M (row)

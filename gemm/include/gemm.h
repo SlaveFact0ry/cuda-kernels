@@ -19,6 +19,7 @@ bool launch_v4a_doublebuffer(int, int, int, float, float, const float*, const fl
 bool launch_v4_cp_async(int, int, int, float, float, const float*, const float*, float*);
 bool launch_v4b_doublebuffer_tp(int, int, int, float, float, const float*, const float*, float*);
 bool launch_v4c_warptiling(int, int, int, float, float, const float*, const float*, float*);
+bool launch_v4d_wtdb   (int, int, int, float, float, const float*, const float*, float*);
 bool launch_v5_wmma    (int, int, int, float, float, const float*, const float*, float*);
 
 struct Version { const char* name; GemmLauncher fn; };
@@ -34,6 +35,7 @@ inline const Version* version_table(int& count) {
     {"v4_cp_async_pipe",launch_v4_cp_async},
         {"v4b_doublebuffer_tp",launch_v4b_doublebuffer_tp},
     {"v4c_warptiling",  launch_v4c_warptiling},
+    {"v4d_wtdb",        launch_v4d_wtdb},
 {"v5_wmma_tc",      launch_v5_wmma},
   };
   count = sizeof(table) / sizeof(table[0]);
