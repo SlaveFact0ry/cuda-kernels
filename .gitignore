@@ -19,3 +19,6 @@ __pycache__/
 .idea/
 */uv.lock
 */.python-version
+*.sass
+*.cubin
+*_dump.txt
