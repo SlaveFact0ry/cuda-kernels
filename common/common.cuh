@@ -61,6 +61,13 @@ inline double max_rel_diff(const std::vector<float>& out,
   return m;
 }
 
+template <typename TYPE>
+__host__ __device__ inline TYPE div_up( TYPE lhs, TYPE rhs ) {
+	return (lhs + rhs - 1) / rhs;
+	// another implementation: return ((lhs % rhs) == 0) ? (a / b) : (a / b + 1);
+}
+
+
 // 2*M*N*K FLOPs for C = A*B (mul + add per inner-product term)
 inline double gemm_gflops(int M, int N, int K, float ms) {
   return 2.0 * (double)M * (double)N * (double)K / (ms * 1e6);
