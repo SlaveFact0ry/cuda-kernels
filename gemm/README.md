@@ -80,6 +80,27 @@ Shared timing/verify utilities live in [`../common/common.cuh`](../common/common
 the Makefile adds `-I../common`. Requires CUDA toolkit (nvcc + cuBLAS) and an
 Ampere-or-newer GPU for the v4/v5 features (v1–v3 build anywhere).
 
+## Measurement conditions
+
+Numbers in this repo are taken with clocks pinned. Without pinning,
+%-of-cuBLAS drifts by up to 5pp and the drift is not uniform across
+kernels — compute-bound kernels draw more power and clock down further
+than the cuBLAS reference in the same run, so the ratio does not cancel.
+
+```bash
+sudo nvidia-smi -pm 1
+sudo nvidia-smi -lgc 1395
+
+cd gemm && make && ./bench 4096 4096 4096 100
+
+sudo nvidia-smi -rgc      # restore
+```
+
+Environment: RTX 3090 (GA102, 82 SM), driver 550.163.01, CUDA 12.4.131,
+cuBLAS 12.4.5.8, fp32 row-major, 100 iterations, cuBLAS SGEMM as the
+reference. Pinning nvcc/driver/cuBLAS versions here too lets a future
+mismatch be told apart from a clock-drift mismatch instead of guessed at.
+
 ## The optimization ladder
 
 1. **v1 naive** — one thread per C element, no reuse. Memory-bound baseline.
