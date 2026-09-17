@@ -62,10 +62,7 @@ __global__ void cp_async_pipe(int M, int N, int K, float alpha, float beta,
   C += blockIdx.y * BM * N + blockIdx.x * BN;
 
   // ---- prologue: tile 0 -> buffer 0 ----
-  // *reinterpret_cast<float4*>(&pf_a) = *reinterpret_cast<const float4*>(&A[innerRowA* K +col0]);
-  // *reinterpret_cast<float4*>(&pf_b) = *reinterpret_cast<const float4*>(&B[innerRowB * N + col0B ]);
-  // *reinterpret_cast<float4*>(&As[0][innerRowA][innerColA]) = *reinterpret_cast<const float4*>(&pf_a);
-  // *reinterpret_cast<float4*>(&Bs[0][innerRowB][innerColB]) = *reinterpret_cast<const float4*>(&pf_b);
+
   __pipeline_memcpy_async(&As[0][innerRowA][col0], &A[innerRowA* K +col0], 16);  // (1) 16B 비동기 복사 '주문'
   __pipeline_memcpy_async(&Bs[0][innerRowB][col0B], &B[innerRowB * N + col0B ], 16);  // (1) 16B 비동기 복사 '주문'
   __pipeline_commit();                              // (2) 여기까지 주문을 한 '스테이지'로 묶음
@@ -82,10 +79,9 @@ __global__ void cp_async_pipe(int M, int N, int K, float alpha, float beta,
           __pipeline_memcpy_async(&As[cur^1][innerRowA][col0], &A[innerRowA* K +col0 + nxt], 16);  // (1) 16B 비동기 복사 '주문'
           __pipeline_memcpy_async(&Bs[cur^1][innerRowB][col0B], &B[(innerRowB + nxt)* N +col0B], 16);  // (1) 16B 비동기 복사 '주문'
           __pipeline_commit();      // 다음 스테이지 봉인
-            // *reinterpret_cast<float4*>(&pf_a) = *reinterpret_cast<const float4*>(&A[innerRowA* K +col0 + nxt]);
-            // *reinterpret_cast<float4*>(&pf_b) = *reinterpret_cast<const float4*>(&B[(innerRowB+nxt) * N  + col0B]);
         }
         // (2) compute on CURRENT buffer — the ENTIRE k-loop
+        #pragma unroll
         for (int k = 0; k < BK; ++k) {
             for (int i = 0; i < TM; ++i) regM[i] = As[cur][threadIdx.y*TM + i][k];
             *reinterpret_cast<float4*>(&regN[0]) = *reinterpret_cast<float4*>(&Bs[cur][k][threadIdx.x*TM]);

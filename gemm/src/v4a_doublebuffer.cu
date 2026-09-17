@@ -41,6 +41,7 @@ __global__ void double_buffer(int M, int N, int K, float alpha, float beta,
             *reinterpret_cast<float4*>(&pf_b) = *reinterpret_cast<const float4*>(&B[(innerRowB+nxt) * N  + col0B]);
         }
         // (2) compute on CURRENT buffer — the ENTIRE k-loop
+        #pragma unroll
         for (int k = 0; k < BK; ++k) {
             for (int i = 0; i < TM; ++i) regM[i] = As[cur][threadIdx.y*TM + i][k];
             *reinterpret_cast<float4*>(&regN[0]) = *reinterpret_cast<float4*>(&Bs[cur][k][threadIdx.x*TM]);

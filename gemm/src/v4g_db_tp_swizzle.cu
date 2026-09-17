@@ -53,6 +53,7 @@ __global__ void double_buffer_transpose_swizzling(int M, int N, int K, float alp
         }
         // (2) compute on CURRENT buffer — the ENTIRE k-loop
         // 계산은 cur 버퍼만 건드린다. 위에서 날린 로드는 cur^1로 갈 것이므로 충돌 없음.
+        #pragma unroll
         for (int k = 0; k < BK; ++k) {
             *reinterpret_cast<float4*>(&regM[0]) = *reinterpret_cast<float4*>(&As[cur][k][threadIdx.y*TM]);
             *reinterpret_cast<float4*>(&regM[4]) = *reinterpret_cast<float4*>(&As[cur][k][threadIdx.y*TM + 4]);

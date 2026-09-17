@@ -50,6 +50,7 @@ __global__ void v4h_a_tp_b_async(int M, int N, int K, float alpha, float beta,
             __pipeline_commit();      // 다음 스테이지 봉인
         }
         // (2) compute on CURRENT buffer — the ENTIRE k-loop
+        #pragma unroll
         for (int k = 0; k < BK; ++k) {
             *reinterpret_cast<float4*>(&regM[0]) = *reinterpret_cast<float4*>(&As[cur][k][threadIdx.y*TM]);
             *reinterpret_cast<float4*>(&regM[4]) = *reinterpret_cast<float4*>(&As[cur][k][threadIdx.y*TM + 4]);

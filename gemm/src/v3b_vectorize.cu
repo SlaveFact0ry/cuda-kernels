@@ -35,6 +35,7 @@ __global__ void register_tile_vec(int M, int N, int K, float alpha, float beta,
     As[col0+3][innerRowA] = tmp.w;
     reinterpret_cast<float4*>(&Bs[innerRowB][col0B])[0] = reinterpret_cast<const float4*>(&B[innerRowB * N + col0B ])[0];
     __syncthreads();
+    #pragma unroll
     for (int k = 0; k < BK; ++k) {
         reinterpret_cast<float4*>(regM)[0] = reinterpret_cast<const float4*>(&As[k][threadIdx.y*TM])[0];
         reinterpret_cast<float4*>(regM)[1] = reinterpret_cast<const float4*>(&As[k][threadIdx.y*TM])[1];
