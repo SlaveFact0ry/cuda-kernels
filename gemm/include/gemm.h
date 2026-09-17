@@ -29,6 +29,7 @@ bool launch_v4g3(int, int, int, float, float, const float*, const float*, float*
 bool launch_v4i(int, int, int, float, float, const float*, const float*, float*);
 bool launch_v4j(int, int, int, float, float, const float*, const float*, float*);
 bool launch_v4k(int, int, int, float, float, const float*, const float*, float*);
+bool launch_v4g2b(int, int, int, float, float, const float*, const float*, float*);
 bool launch_v5_wmma    (int, int, int, float, float, const float*, const float*, float*);
 
 struct Version { const char* name; GemmLauncher fn; };
@@ -54,6 +55,7 @@ inline const Version* version_table(int& count) {
     {"v4i",              launch_v4i},
     {"v4j",              launch_v4j},
     {"v4k",              launch_v4k},
+    {"v4g2b",            launch_v4g2b},
 {"v5_wmma_tc",      launch_v5_wmma},
   };
   count = sizeof(table) / sizeof(table[0]);
