@@ -44,7 +44,7 @@ __global__ void double_buffer(int M, int N, int K, float alpha, float beta,
         #pragma unroll
         for (int k = 0; k < BK; ++k) {
             for (int i = 0; i < TM; ++i) regM[i] = As[cur][threadIdx.y*TM + i][k];
-            *reinterpret_cast<float4*>(&regN[0]) = *reinterpret_cast<float4*>(&Bs[cur][k][threadIdx.x*TM]);
+            *reinterpret_cast<float4*>(&regN[0]) = *reinterpret_cast<float4*>(&Bs[cur][k][threadIdx.x*TN]);
             *reinterpret_cast<float4*>(&regN[4]) = *reinterpret_cast<float4*>(&Bs[cur][k][threadIdx.x*TN+4]);
             for (int i = 0; i < TM; ++i)
                 for (int j = 0; j < TN; ++j) acc[i][j] += regM[i] * regN[j];
@@ -73,8 +73,8 @@ bool launch_v4a_doublebuffer(int M, int N, int K, float alpha, float beta,
             BM, BN, BK, M, N, K);
     return false;                    // harness skips the row
     }
-    dim3 block(( BM / TM ) , ( BN / TN )) ;
-    dim3 grid(N / BN, M / BM);         // exact division now — no false ceil-div promise
+    dim3 block(BN / TN, BM / TM);              // x -> N (col), y -> M (row)
+    dim3 grid(div_up(N, BN), div_up(M, BM));   // exact by the guard above
     double_buffer<<<grid, block>>>(M, N, K, alpha, beta, dA, dB, dC);
     CUDA_CHECK(cudaGetLastError());
     return true;

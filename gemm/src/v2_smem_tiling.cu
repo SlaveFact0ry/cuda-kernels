@@ -57,8 +57,8 @@ bool launch_v2_smem(int M, int N, int K, float alpha, float beta,
             BM, BN, BK, M, N, K);
     return false;                    // harness skips the row
   }
-  dim3 block(BN, BM);
-  dim3 grid(N / BN, M / BM);         // exact division now — no false ceil-div promise
+  dim3 block(BN, BM);                          // x -> N (col), y -> M (row)
+  dim3 grid(div_up(N, BN), div_up(M, BM));     // exact by the guard above
   smem_sgemm<<<grid, block>>>(M, N, K, alpha, beta, dA, dB, dC);
   CUDA_CHECK(cudaGetLastError());
   return true;
