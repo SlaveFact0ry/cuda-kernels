@@ -18,8 +18,17 @@ SRC := src/v0_cublas.cu src/v1_naive.cu src/v2_smem_tiling.cu \
 bench: $(SRC)
 	$(NVCC) $(NVFLAGS) $(SRC) -o bench $(LDLIBS)
 
+# v5 tensor-core ladder: FP32 cuBLAS baseline + the TF32/BF16 baselines and
+# kernels, in a separate binary (bench.cu stays FP32-only). Add v5 kernel
+# sources here as they land.
+TC_SRC := src/v0_cublas.cu src/v0_cublas_tc.cu \
+          driver/bench_tc.cu
+
+bench_tc: $(TC_SRC)
+	$(NVCC) $(NVFLAGS) $(TC_SRC) -o bench_tc $(LDLIBS)
+
 # default 2048^3 run
-.PHONY: run bench-sizes profile sanitize clean
+.PHONY: run bench-sizes profile profile-tc sanitize clean
 run: bench
 	./bench
 
@@ -34,8 +43,19 @@ KERNEL ?= naive_sgemm
 profile: bench
 	ncu --set full -k $(KERNEL) -c 1 ./bench 1024 1024 1024
 
+# v5-0: profile one kernel per precision at 4096^3 (skipping the 10 warmup
+# launches) into docs/ncu/. Matches on the full demangled name because cuBLAS
+# wraps CUTLASS kernels in a function whose base name is just "Kernel2".
+TC_PROFILE := fp32:simt_sgemm tf32:s1688gemm bf16:s16816gemm_bf16
+profile-tc: bench_tc
+	@for p in $(TC_PROFILE); do \
+	  ncu --set full --kernel-name-base demangled -k "regex:$${p#*:}" \
+	      --launch-skip 10 -c 1 -f -o docs/ncu/v5-0_cublas_$${p%%:*}_4096 \
+	      ./bench_tc 4096 4096 4096 1; \
+	done
+
 sanitize: bench
 	compute-sanitizer --tool memcheck --error-exitcode 1 ./bench 1024 1024 1024 3
 
 clean:
-	rm -f bench
+	rm -f bench bench_tc
