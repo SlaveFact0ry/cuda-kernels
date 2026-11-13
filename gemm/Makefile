@@ -22,6 +22,8 @@ bench: $(SRC)
 # kernels, in a separate binary (bench.cu stays FP32-only). Add v5 kernel
 # sources here as they land.
 TC_SRC := src/v0_cublas.cu src/v0_cublas_tc.cu src/v5n1_wmma.cu \
+          src/v5n2_smem_tiling.cu src/v5n3_warp_tile.cu src/v5n4_vec_pad.cu \
+          src/v5n5_doublebuffer.cu src/v5n6_cp_async.cu src/v5s_wmma.cu src/v5m_mma.cu \
           driver/bench_tc.cu
 
 bench_tc: $(TC_SRC)

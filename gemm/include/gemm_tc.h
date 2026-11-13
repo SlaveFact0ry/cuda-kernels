@@ -12,7 +12,7 @@
 //     mode, not a storage type), fed pre-rounded FP32 data (round_to_tf32).
 //   - BF16 kernels get their own signature: inputs are __nv_bfloat16*.
 //
-// Tables list the tensor-core kernels (v5n1 so far); the cuBLAS baselines live
+// Tables list the tensor-core kernels (v5n1 implemented, v5n2..v5s, v5m stubs); the cuBLAS baselines live
 // in bench_tc.cu. To add a row, declare its launcher below and add
 // {"name", launcher} to the matching table.
 using BfLauncher = bool (*)(int M, int N, int K, float alpha, float beta,
@@ -21,6 +21,20 @@ using BfLauncher = bool (*)(int M, int N, int K, float alpha, float beta,
 
 bool launch_v5n1_tf32(int, int, int, float, float, const float*, const float*, float*);
 bool launch_v5n1_bf16(int, int, int, float, float, const __nv_bfloat16*, const __nv_bfloat16*, float*);
+bool launch_v5n2_tf32(int, int, int, float, float, const float*, const float*, float*);
+bool launch_v5n2_bf16(int, int, int, float, float, const __nv_bfloat16*, const __nv_bfloat16*, float*);
+bool launch_v5n3_tf32(int, int, int, float, float, const float*, const float*, float*);
+bool launch_v5n3_bf16(int, int, int, float, float, const __nv_bfloat16*, const __nv_bfloat16*, float*);
+bool launch_v5n4_tf32(int, int, int, float, float, const float*, const float*, float*);
+bool launch_v5n4_bf16(int, int, int, float, float, const __nv_bfloat16*, const __nv_bfloat16*, float*);
+bool launch_v5n5_tf32(int, int, int, float, float, const float*, const float*, float*);
+bool launch_v5n5_bf16(int, int, int, float, float, const __nv_bfloat16*, const __nv_bfloat16*, float*);
+bool launch_v5n6_tf32(int, int, int, float, float, const float*, const float*, float*);
+bool launch_v5n6_bf16(int, int, int, float, float, const __nv_bfloat16*, const __nv_bfloat16*, float*);
+bool launch_v5s_tf32(int, int, int, float, float, const float*, const float*, float*);
+bool launch_v5s_bf16(int, int, int, float, float, const __nv_bfloat16*, const __nv_bfloat16*, float*);
+bool launch_v5m_tf32(int, int, int, float, float, const float*, const float*, float*);
+bool launch_v5m_bf16(int, int, int, float, float, const __nv_bfloat16*, const __nv_bfloat16*, float*);
 
 struct TcVersion { const char* name; GemmLauncher fn; };
 struct BfVersion { const char* name; BfLauncher fn; };
@@ -28,6 +42,13 @@ struct BfVersion { const char* name; BfLauncher fn; };
 inline const TcVersion* tf32_table(int& count) {
   static const std::vector<TcVersion> table = {
     {"v5n1_tf32", launch_v5n1_tf32},
+    {"v5n2_tf32", launch_v5n2_tf32},
+    {"v5n3_tf32", launch_v5n3_tf32},
+    {"v5n4_tf32", launch_v5n4_tf32},
+    {"v5n5_tf32", launch_v5n5_tf32},
+    {"v5n6_tf32", launch_v5n6_tf32},
+    {"v5s_tf32", launch_v5s_tf32},
+    {"v5m_tf32", launch_v5m_tf32},
   };
   count = (int)table.size();
   return table.data();
@@ -36,6 +57,13 @@ inline const TcVersion* tf32_table(int& count) {
 inline const BfVersion* bf16_table(int& count) {
   static const std::vector<BfVersion> table = {
     {"v5n1_bf16", launch_v5n1_bf16},
+    {"v5n2_bf16", launch_v5n2_bf16},
+    {"v5n3_bf16", launch_v5n3_bf16},
+    {"v5n4_bf16", launch_v5n4_bf16},
+    {"v5n5_bf16", launch_v5n5_bf16},
+    {"v5n6_bf16", launch_v5n6_bf16},
+    {"v5s_bf16", launch_v5s_bf16},
+    {"v5m_bf16", launch_v5m_bf16},
   };
   count = (int)table.size();
   return table.data();
