@@ -12,27 +12,31 @@
 //     mode, not a storage type), fed pre-rounded FP32 data (round_to_tf32).
 //   - BF16 kernels get their own signature: inputs are __nv_bfloat16*.
 //
-// Both tables are empty for now (v5-0 ships no kernels yet, only the cuBLAS
-// baselines in bench_tc.cu). Add rows as v5n1_tf32, v5n1_bf16, ... land:
-//   bool launch_v5n1_tf32(int, int, int, float, float, const float*, const float*, float*);
-//   bool launch_v5n1_bf16(int, int, int, float, float, const __nv_bfloat16*, const __nv_bfloat16*, float*);
-// then add {"v5n1_tf32", launch_v5n1_tf32} / {"v5n1_bf16", launch_v5n1_bf16}
-// to the tables below.
+// Tables list the tensor-core kernels (v5n1 so far); the cuBLAS baselines live
+// in bench_tc.cu. To add a row, declare its launcher below and add
+// {"name", launcher} to the matching table.
 using BfLauncher = bool (*)(int M, int N, int K, float alpha, float beta,
                             const __nv_bfloat16* dA, const __nv_bfloat16* dB,
                             float* dC);
+
+bool launch_v5n1_tf32(int, int, int, float, float, const float*, const float*, float*);
+bool launch_v5n1_bf16(int, int, int, float, float, const __nv_bfloat16*, const __nv_bfloat16*, float*);
 
 struct TcVersion { const char* name; GemmLauncher fn; };
 struct BfVersion { const char* name; BfLauncher fn; };
 
 inline const TcVersion* tf32_table(int& count) {
-  static const std::vector<TcVersion> table = {};
+  static const std::vector<TcVersion> table = {
+    {"v5n1_tf32", launch_v5n1_tf32},
+  };
   count = (int)table.size();
   return table.data();
 }
 
 inline const BfVersion* bf16_table(int& count) {
-  static const std::vector<BfVersion> table = {};
+  static const std::vector<BfVersion> table = {
+    {"v5n1_bf16", launch_v5n1_bf16},
+  };
   count = (int)table.size();
   return table.data();
 }

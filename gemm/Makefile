@@ -21,7 +21,7 @@ bench: $(SRC)
 # v5 tensor-core ladder: FP32 cuBLAS baseline + the TF32/BF16 baselines and
 # kernels, in a separate binary (bench.cu stays FP32-only). Add v5 kernel
 # sources here as they land.
-TC_SRC := src/v0_cublas.cu src/v0_cublas_tc.cu \
+TC_SRC := src/v0_cublas.cu src/v0_cublas_tc.cu src/v5n1_wmma.cu \
           driver/bench_tc.cu
 
 bench_tc: $(TC_SRC)
