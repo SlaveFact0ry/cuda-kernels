@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <vector>
@@ -62,4 +63,21 @@ inline std::vector<__nv_bfloat16> to_bf16(const std::vector<float>& v) {
   std::vector<__nv_bfloat16> out(v.size());
   for (size_t i = 0; i < v.size(); ++i) out[i] = __float2bfloat16(v[i]);
   return out;
+}
+
+// Normwise relative error ||out - ref||_F / ||ref||_F (double accumulation).
+// Unlike common.cuh's max_rel_diff (denominator floored at 1, so it reads as
+// an ABSOLUTE error on the many C elements with |C| < 1 when inputs are
+// uniform in [-1,1]), this metric reflects the actual precision loss of the
+// reduced-precision compute path and stays roughly size-independent as K
+// grows, since both norms grow with K at the same rate.
+inline double normwise_rel_diff(const std::vector<float>& out,
+                                const std::vector<float>& ref) {
+  double num = 0.0, den = 0.0;
+  for (size_t i = 0; i < out.size(); ++i) {
+    double d = (double)out[i] - (double)ref[i];
+    num += d * d;
+    den += (double)ref[i] * (double)ref[i];
+  }
+  return std::sqrt(num) / std::sqrt(den);
 }

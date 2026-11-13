@@ -56,6 +56,8 @@ int main(int argc, char** argv) {
   printf("precisions: fp32 (storage=compute=FP32), "
          "tf32 (storage=FP32 pre-rounded, compute=TF32), "
          "bf16 (storage=compute=BF16, accumulate=FP32)\n");
+  printf("errFP32(F) = ||C - C_ref_fp32||_F / ||C_ref_fp32||_F, "
+         "normwise relative error vs the FP32 cuBLAS reference\n");
 
   // ---- host inputs ------------------------------------------------------
   std::vector<float> hA((size_t)M * K), hB((size_t)K * N);
@@ -94,7 +96,7 @@ int main(int argc, char** argv) {
   cublasHandle_t handle; CUBLAS_CHECK(cublasCreate(&handle));
 
   char buf_ms[32], buf_g[32], buf_sol[32], buf_x[32], buf_v[48], buf_e[32];
-  print_row("version", "prec", "ms", "GFLOP/s", "%SoL", "xFP32", "verify", "errFP32");
+  print_row("version", "prec", "ms", "GFLOP/s", "%SoL", "xFP32", "verify", "errFP32(F)");
 
   // ---- cuBLAS baselines, one per precision --------------------------------
   CUDA_CHECK(cudaMemset(dC, 0, h_out.size()*sizeof(float)));
@@ -109,7 +111,7 @@ int main(int argc, char** argv) {
   float ms_tf32 = run_cublas_tf32(handle, M, N, K, alpha, beta, dA_tf32, dB_tf32, dC, warmup, iters);
   CUDA_CHECK(cudaMemcpy(h_ref_tf32.data(), dC, h_ref_tf32.size()*sizeof(float), cudaMemcpyDeviceToHost));
   double sol_tf32 = gemm_gflops(M, N, K, ms_tf32);
-  double err_tf32_fp32 = max_rel_diff(h_ref_tf32, h_ref_fp32);
+  double err_tf32_fp32 = normwise_rel_diff(h_ref_tf32, h_ref_fp32);
   snprintf(buf_ms, sizeof(buf_ms), "%.3f", ms_tf32);
   snprintf(buf_g, sizeof(buf_g), "%.1f", sol_tf32);
   snprintf(buf_x, sizeof(buf_x), "%.2f", ms_fp32 / ms_tf32);
@@ -120,7 +122,7 @@ int main(int argc, char** argv) {
   float ms_bf16 = run_cublas_bf16(handle, M, N, K, alpha, beta, dA_bf16, dB_bf16, dC, warmup, iters);
   CUDA_CHECK(cudaMemcpy(h_ref_bf16.data(), dC, h_ref_bf16.size()*sizeof(float), cudaMemcpyDeviceToHost));
   double sol_bf16 = gemm_gflops(M, N, K, ms_bf16);
-  double err_bf16_fp32 = max_rel_diff(h_ref_bf16, h_ref_fp32);
+  double err_bf16_fp32 = normwise_rel_diff(h_ref_bf16, h_ref_fp32);
   snprintf(buf_ms, sizeof(buf_ms), "%.3f", ms_bf16);
   snprintf(buf_g, sizeof(buf_g), "%.1f", sol_bf16);
   snprintf(buf_x, sizeof(buf_x), "%.2f", ms_fp32 / ms_bf16);
@@ -144,7 +146,7 @@ int main(int argc, char** argv) {
       CUDA_CHECK(cudaDeviceSynchronize());
       CUDA_CHECK(cudaMemcpy(h_out.data(), dC, h_out.size()*sizeof(float), cudaMemcpyDeviceToHost));
       double diff_same = max_rel_diff(h_out, h_ref_tf32);
-      double diff_fp32 = max_rel_diff(h_out, h_ref_fp32);
+      double diff_fp32 = normwise_rel_diff(h_out, h_ref_fp32);
       bool pass = diff_same < kRelTol;
       if (!pass) ++failures;
       float ms = time_launcher(tbl[i].fn, M, N, K, alpha, beta, dA_tf32, dB_tf32, dC, warmup, iters);
@@ -169,7 +171,7 @@ int main(int argc, char** argv) {
       CUDA_CHECK(cudaDeviceSynchronize());
       CUDA_CHECK(cudaMemcpy(h_out.data(), dC, h_out.size()*sizeof(float), cudaMemcpyDeviceToHost));
       double diff_same = max_rel_diff(h_out, h_ref_bf16);
-      double diff_fp32 = max_rel_diff(h_out, h_ref_fp32);
+      double diff_fp32 = normwise_rel_diff(h_out, h_ref_fp32);
       bool pass = diff_same < kRelTol;
       if (!pass) ++failures;
       float ms = time_launcher(tbl[i].fn, M, N, K, alpha, beta, dA_bf16, dB_bf16, dC, warmup, iters);
