@@ -28,7 +28,7 @@ bench_tc: $(TC_SRC)
 	$(NVCC) $(NVFLAGS) $(TC_SRC) -o bench_tc $(LDLIBS)
 
 # default 2048^3 run
-.PHONY: run bench-sizes profile profile-tc sanitize clean
+.PHONY: run bench-sizes profile profile-tc sanitize clean micro-tc profile-micro-tc
 run: bench
 	./bench
 
@@ -57,5 +57,27 @@ profile-tc: bench_tc
 sanitize: bench
 	compute-sanitizer --tool memcheck --error-exitcode 1 ./bench 1024 1024 1024 3
 
+# tensor-pipe utilization ceiling microbenchmark: no memory traffic, just a
+# closed loop of independent mma.sync ops per precision. See micro/tc_ceiling.cu.
+micro-tc: micro/tc_ceiling
+
+micro/tc_ceiling: micro/tc_ceiling.cu
+	$(NVCC) $(NVFLAGS) $< -o $@
+
+# one warmup + one timed launch per variant (micro/tc_ceiling's single-variant
+# CLI mode), profiled with --launch-skip 1 -c 1 so ncu lands on the timed
+# launch, not the warmup.
+# The stall metric is the per-warp-active percentage: the
+# smsp__average_warp_latency_issue_stalled_* counters are cumulative ratios
+# whose .pct/.ratio rollups are not 0-100%.
+TC_CEILING_VARIANTS := f16f16 f16f32 bf16f32 tf32f32
+MICRO_METRICS := sm__pipe_tensor_cycles_active.avg.pct_of_peak_sustained_active,sm__pipe_tensor_op_hmma_cycles_active.avg.pct_of_peak_sustained_active,sm__inst_executed_pipe_tensor_op_hmma.sum,gpu__time_duration.sum,smsp__warp_issue_stalled_math_pipe_throttle_per_warp_active.pct
+profile-micro-tc: micro/tc_ceiling
+	@for v in $(TC_CEILING_VARIANTS); do \
+	  echo "=== $$v ==="; \
+	  ncu --metrics $(MICRO_METRICS) --launch-skip 1 -c 1 \
+	      ./micro/tc_ceiling $$v; \
+	done
+
 clean:
-	rm -f bench bench_tc
+	rm -f bench bench_tc micro/tc_ceiling

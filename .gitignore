@@ -3,6 +3,7 @@
 *.so
 bench
 bench_tc
+tc_ceiling
 build/
 # profiling artifacts
 *.ncu-rep
